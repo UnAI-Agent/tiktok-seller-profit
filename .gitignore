@@ -141,3 +141,13 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# Python backend
+venv/
+__pycache__/
+*.pyc
+data/*.db
+data/*.db-journal
+platform.db
+platform.db-journal
+.neon

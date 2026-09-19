@@ -1,0 +1,31 @@
+---
+description: Unified AI development standard for this repository
+alwaysApply: true
+---
+
+Follow the repository root AGENTS.md.
+
+Before inspecting source, read `.cursor/docs/INDEX.md`. It maps every doc and
+every module. Read only the docs INDEX names as relevant to the current task.
+Do not read the whole docs directory.
+
+Record progress in `.cursor/docs/STATE.md` when a unit of work completes.
+Record architecture choices in `.cursor/docs/DECISIONS.md`. Do not create docs
+outside `.cursor/docs/` without approval.
+
+Trust `.cursor/docs/MAP.md` over re-reading files. If MAP.md is wrong, fix
+MAP.md in the same change.
+
+`AGENTS.md` and `.cursor/rules/*.mdc` in this repo are generated copies. Do
+not edit them here. Edit the canonical folder, then run
+`.\sync-standard.ps1 -All` from it.
+
+When scaffolding a NEW repository, seed the standard by running the sync
+script from the canonical folder with `-Target <new repo path>`. It copies
+AGENTS.md, the rules, and the docs templates, and registers the repo. Do not
+hand-copy these files -- the registry drifts and the repo silently stops
+receiving updates.
+
+Keep context usage minimal. Make surgical edits. Do not rewrite unrelated
+files. Do not add dependencies without approval. Do not perform destructive
+actions without explicit approval.

@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Mock TikTok Product Editor — extension test</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        max-width: 720px;
+        margin: 2rem auto;
+        padding: 0 1rem;
+      }
+      .field-row {
+        margin-bottom: 1.5rem;
+      }
+      label,
+      .label {
+        font-weight: 600;
+        display: block;
+        margin-bottom: 0.25rem;
+      }
+      textarea,
+      input {
+        width: 100%;
+        padding: 0.5rem;
+      }
+      .banner {
+        background: #eff6ff;
+        padding: 0.75rem;
+        border-radius: 8px;
+        margin-bottom: 1rem;
+        font-size: 0.875rem;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="banner">
+      Local mock page for TikTok Seller Tool. Load this extension on
+      <code>http://127.0.0.1:8765</code> (see TESTING.md). Edit fields to watch
+      the profit overlay update.
+    </div>
+    <header>
+      <span id="header-title"
+        >Ailun Screen Protector + Camera Lens Protector for iPhone 16 Pro
+        Max</span
+      >
+    </header>
+    <main>
+      <section class="field-row">
+        <div class="label">Product name</div>
+        <textarea id="product-name">
+Ailun Screen Protector + Camera Lens Protector for iPhone 16 Pro Max</textarea
+        >
+      </section>
+      <section class="field-row">
+        <div class="label">Retail price</div>
+        <input id="retail-price" type="text" value="29.99" />
+      </section>
+    </main>
+  </body>
+</html>

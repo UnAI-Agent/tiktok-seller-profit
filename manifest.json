@@ -1,0 +1,46 @@
+{
+  "manifest_version": 3,
+  "name": "TikTok Seller Tool — Profit & SKU",
+  "version": "0.1.0",
+  "description": "Real-time profit margins for TikTok Shop sellers. See hidden fees, break-even prices, margin tone.",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "permissions": ["storage", "alarms", "activeTab", "scripting"],
+  "host_permissions": [
+    "https://seller-us.tiktok.com/*",
+    "https://seller.tiktokglobalshop.com/*",
+    "https://seller-us.tiktokglobalshop.com/*",
+    "https://*.tiktokshop.com/*",
+    "http://127.0.0.1:8765/*",
+    "http://127.0.0.1:8000/*",
+    "http://localhost:8000/*"
+  ],
+  "background": {
+    "service_worker": "src/background/serviceWorker.ts",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "index.html",
+    "default_title": "TikTok Seller Tool",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://seller-us.tiktok.com/*",
+        "https://seller.tiktokglobalshop.com/*",
+        "https://seller-us.tiktokglobalshop.com/*",
+        "http://127.0.0.1:8765/*"
+      ],
+      "js": ["src/content/index.ts"],
+      "run_at": "document_idle"
+    }
+  ]
+}
