@@ -2,7 +2,7 @@
 
 Chrome extension: live profit overlay + SKU dashboard for TikTok Shop Seller Center. Publisher: Plainsman Software.
 
-Git home: [UnAI-Agent/tiktok-seller-profit](https://github.com/UnAI-Agent/tiktok-seller-profit). Product spec: `TIKTOK_SELLER_TOOL_CURSOR_PROMPT.md`.
+Git home: [UnAI-Agent/tiktok-seller-profit](https://github.com/UnAI-Agent/tiktok-seller-profit).
 
 ## Commands
 
@@ -44,7 +44,7 @@ Prod deploys the image already running on LLE. It does not build a second image.
 
 ## Deploying (LLE + prod)
 
-Do **not** clone a second git repo. Same codebase, two Fly apps. Full path: `.cursor/docs/DEPLOY.md`.
+Do **not** clone a second git repo. Same codebase, two Fly apps. See Environments above.
 
 ```powershell
 .\scripts\build-lle.ps1      # unpacked tester extension → LLE API

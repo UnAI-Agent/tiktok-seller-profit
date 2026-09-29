@@ -166,3 +166,10 @@ data/*.db-journal
 platform.db
 platform.db-journal
 .neon
+
+# Assistant notes and other markdown stay on this machine.
+# The product repo tracks README.md only.
+*.md
+!/README.md
+.cursor/
+docs/claude/
