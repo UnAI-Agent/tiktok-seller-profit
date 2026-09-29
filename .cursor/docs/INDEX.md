@@ -6,15 +6,20 @@
 | `MAP.md` | before touching source |
 | `VERIFY.md` | validation step |
 | `DECISIONS.md` | architecture choices |
+| `DEPLOY.md` | LLE vs prod hosting |
+| `ops/ALERTS.md` | New Relic alert list |
+| `ops/grafana/README.md` | Grafana read-only views |
+| `command-center/DEPLOY.md` | Command Center access |
 | `TIKTOK_SELLER_TOOL_CURSOR_PROMPT.md` | product + feature spec (repo root) |
+| `test-fixtures/real/README.md` | how to capture scrubbed Seller Center HTML |
 
 ## Project
 
-Manifest V3 Chrome extension: profit overlay, SPS badge, and SKU dashboard on TikTok Shop Seller Center. Pro auth/billing/SKU sync via FastAPI in `backend/`.
+Manifest V3 Chrome extension: per-unit profit overlay and SKU dashboard on TikTok Shop Seller Center. Pro auth/billing/SKU sync via FastAPI in `backend/`.
 
 ## Architecture
 
-Content script scrapes seller pages → `profit.ts` → Shadow DOM overlay. Popup reads `chrome.storage.local`. Service worker routes messages + 6h SPS alarm. Pro calls `backend/main.py` (`service=tiktok-seller-tool`).
+Content script scrapes seller pages → `profit.ts` → closed Shadow DOM overlay. Popup reads `chrome.storage.local`. Service worker validates messages + runs the 6h SPS alarm. Pro calls the dedicated `backend/marginmark_app.py`. Owner ops console: `GET /ops` (admin keys stay outside the extension).
 
 ## Invariants
 

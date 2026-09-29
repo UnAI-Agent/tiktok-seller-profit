@@ -1,0 +1,404 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Ops — MarginMark</title>
+  <style>
+    :root { font-family: system-ui, sans-serif; color: #0f172a; }
+    body { max-width: 1200px; margin: 1.5rem auto; padding: 0 1rem; }
+    .table-wrap { overflow-x: auto; }
+    input.cell, textarea.cell { min-width: 7rem; width: 100%; box-sizing: border-box; }
+    h1 { font-size: 1.25rem; }
+    nav { display: flex; gap: .5rem; flex-wrap: wrap; margin: 1rem 0; }
+    button, input, select { font: inherit; }
+    .tab { border: 1px solid #cbd5e1; background: #fff; padding: .35rem .7rem; border-radius: 8px; cursor: pointer; }
+    .tab.on { background: #0f172a; color: #fff; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { text-align: left; padding: .4rem .35rem; border-bottom: 1px solid #e2e8f0; }
+    .card { border: 1px solid #e2e8f0; border-radius: 12px; padding: 1rem; margin: .75rem 0; }
+    .row { display: flex; gap: .5rem; flex-wrap: wrap; align-items: end; }
+    label { display: flex; flex-direction: column; gap: .2rem; font-size: 12px; }
+    input, select { padding: .35rem .5rem; border: 1px solid #cbd5e1; border-radius: 8px; }
+    .ok { color: #047857; } .err { color: #be123c; }
+    #login { max-width: 22rem; }
+  </style>
+</head>
+<body>
+  <h1>Owner ops console</h1>
+  <p style="font-size:13px;color:#64748b">Not part of the Chrome extension. Key stays in this browser only. JS updates still ship via CWS; this pushes promos, remote copy, and reads telemetry.</p>
+  <div id="login" class="card">
+    <label>ADMIN_KEY
+      <input id="key" type="password" autocomplete="off" />
+    </label>
+    <label>TELEMETRY_READ_KEY
+      <input id="telemetryKey" type="password" autocomplete="off" />
+    </label>
+    <button class="tab" style="margin-top:.75rem" id="unlock">Unlock</button>
+    <p id="loginMsg" class="err"></p>
+  </div>
+  <div id="app" hidden>
+    <div class="row">
+      <label>Service
+        <select id="service">
+          <option value="tiktok-seller-tool">tiktok-seller-tool</option>
+          <option value="">(all)</option>
+        </select>
+      </label>
+    </div>
+    <nav>
+      <button class="tab on" data-tab="overview">Overview</button>
+      <button class="tab" data-tab="dashboard">Dashboard</button>
+      <button class="tab" data-tab="users">Users</button>
+      <button class="tab" data-tab="database">Database</button>
+      <button class="tab" data-tab="telemetry">Telemetry</button>
+      <button class="tab" data-tab="promos">Promo codes</button>
+      <button class="tab" data-tab="config">Remote config</button>
+    </nav>
+    <div id="panel"></div>
+  </div>
+  <script src="/static/ops.js" defer></script>
+  <script type="text/plain" id="legacy-ops-disabled">
+    const $ = (id) => document.getElementById(id);
+    let key = sessionStorage.getItem("opsKey") || "";
+    const svc = () => $("service").value;
+
+    async function api(path, opts = {}) {
+      const res = await fetch(path, {
+        ...opts,
+        headers: {
+          "Content-Type": "application/json",
+          "X-Admin-Key": key,
+          ...(opts.headers || {}),
+        },
+      });
+      const text = await res.text();
+      let body = {};
+      try { body = JSON.parse(text); } catch { body = { error: text }; }
+      if (!res.ok) throw new Error(body.error || body.detail || res.statusText);
+      return body;
+    }
+
+    function show(tab) {
+      document.querySelectorAll(".tab[data-tab]").forEach((b) => b.classList.toggle("on", b.dataset.tab === tab));
+      const load = { overview, users, database, telemetry, promos, config }[tab];
+      load();
+    }
+
+    function esc(s) {
+      return String(s ?? "").replace(/[&<>"'`]/g, (c) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;", "`": "&#96;",
+      }[c]));
+    }
+
+    function cellInput(col, value, prefix) {
+      const name = col.name;
+      const id = `${prefix}-${name}`;
+      if (col.secret) {
+        return `<input class="cell" id="${esc(id)}" data-col="${esc(name)}" type="password" placeholder="${col.pk ? "" : "unchanged"}" autocomplete="off" />`;
+      }
+      const v = value == null ? "" : String(value);
+      if (v.length > 80) {
+        return `<textarea class="cell" id="${esc(id)}" data-col="${esc(name)}" rows="2">${esc(v)}</textarea>`;
+      }
+      return `<input class="cell" id="${esc(id)}" data-col="${esc(name)}" value="${esc(v)}" />`;
+    }
+
+    function readFields(root) {
+      const values = {};
+      root.querySelectorAll("[data-col]").forEach((el) => {
+        values[el.dataset.col] = el.value;
+      });
+      return values;
+    }
+
+    let dbOffset = 0;
+
+    async function database() {
+      const tables = await api("/admin/db/tables");
+      const names = (tables.tables || []).map((t) => t.table);
+      const selected = $("dbTable") ? $("dbTable").value : (names[0] || "users");
+      const q = $("dbQ") ? $("dbQ").value : "";
+      const opts = names.map((n) => {
+        const meta = tables.tables.find((t) => t.table === n);
+        const sel = n === selected ? " selected" : "";
+        return `<option value="${esc(n)}"${sel}>${esc(n)} (${meta ? meta.rows : 0})</option>`;
+      }).join("");
+      $("panel").legacyDisabled = `<div class="card">
+        <p style="font-size:13px;color:#64748b">Dropdown is every table in this API database. Secrets (password hashes, OAuth verifiers) stay hidden; a new password is hashed on save. No free-form SQL.</p>
+        <div class="row">
+          <label>Table <select id="dbTable">${opts}</select></label>
+          <label>Search <input id="dbQ" value="${esc(q)}" placeholder="substring" /></label>
+          <button id="dbLoad">Load</button>
+        </div>
+        <p id="dbMsg" class="ok"></p>
+        <div id="dbBody"></div>
+      </div>`;
+      const load = async (offset) => {
+        dbOffset = offset;
+        const table = $("dbTable").value;
+        const query = $("dbQ").value.trim();
+        const data = await api(`/admin/db/rows?table=${encodeURIComponent(table)}&q=${encodeURIComponent(query)}&limit=50&offset=${offset}`);
+        const cols = data.columns || [];
+        const pkCols = cols.filter((c) => c.pk).map((c) => c.name);
+        const head = cols.map((c) => `<th>${esc(c.name)}${c.pk ? " *" : ""}${c.secret ? " (hidden)" : ""}</th>`).join("") + "<th></th>";
+        const insertCells = cols.map((c) => `<td>${cellInput(c, "", "new")}</td>`).join("")
+          + `<td><button id="dbInsert">Insert</button></td>`;
+        const rowHtml = (data.rows || []).map((row, i) => {
+          const cells = cols.map((c) => `<td>${cellInput(c, row[c.name], `r${i}`)}</td>`).join("");
+          return `<tr data-i="${i}">${cells}<td><button data-save="${i}">Save</button> <button data-del="${i}">Delete</button></td></tr>`;
+        }).join("");
+        const prev = offset > 0 ? `<button id="dbPrev">Prev</button>` : "";
+        const next = offset + data.limit < data.total ? `<button id="dbNext">Next</button>` : "";
+        $("dbBody").legacyDisabled = `<p>${data.total} rows · showing ${offset + 1}–${Math.min(offset + data.limit, data.total) || 0}</p>
+          <div class="table-wrap"><table>
+            <thead><tr>${head}</tr></thead>
+            <tbody>
+              <tr>${insertCells}</tr>
+              ${rowHtml}
+            </tbody>
+          </table></div>
+          <div class="row" style="margin-top:.75rem">${prev} ${next}</div>`;
+        const msg = (t, ok) => { $("dbMsg").textContent = t; $("dbMsg").className = ok ? "ok" : "err"; };
+        $("dbInsert").onclick = async () => {
+          try {
+            await api("/admin/db/rows", { method: "POST", body: JSON.stringify({ table, values: readFields($("dbInsert").closest("tr")) }) });
+            msg("Inserted", true);
+            load(0);
+          } catch (e) { msg(e.message, false); }
+        };
+        $("dbBody").querySelectorAll("[data-save]").forEach((b) => {
+          b.onclick = async () => {
+            const tr = b.closest("tr");
+            const i = Number(b.dataset.save);
+            const row = data.rows[i];
+            const pk = Object.fromEntries(pkCols.map((n) => [n, row[n]]));
+            try {
+              await api("/admin/db/rows", { method: "PUT", body: JSON.stringify({ table, pk, values: readFields(tr) }) });
+              msg("Saved", true);
+              load(dbOffset);
+            } catch (e) { msg(e.message, false); }
+          };
+        });
+        $("dbBody").querySelectorAll("[data-del]").forEach((b) => {
+          b.onclick = async () => {
+            if (!confirm("Delete this row?")) return;
+            const i = Number(b.dataset.del);
+            const row = data.rows[i];
+            const pk = Object.fromEntries(pkCols.map((n) => [n, row[n]]));
+            try {
+              await api("/admin/db/rows/delete", { method: "POST", body: JSON.stringify({ table, pk }) });
+              msg("Deleted", true);
+              load(dbOffset);
+            } catch (e) { msg(e.message, false); }
+          };
+        });
+        const prevBtn = $("dbPrev");
+        const nextBtn = $("dbNext");
+        if (prevBtn) prevBtn.onclick = () => load(Math.max(0, dbOffset - data.limit));
+        if (nextBtn) nextBtn.onclick = () => load(dbOffset + data.limit);
+      };
+      $("dbLoad").onclick = () => load(0);
+      $("dbTable").onchange = () => load(0);
+      try { await load(0); } catch (e) { $("dbMsg").textContent = e.message; $("dbMsg").className = "err"; }
+    }
+
+    async function overview() {
+      const o = await api("/admin/overview" + (svc() ? `?service=${encodeURIComponent(svc())}` : ""));
+      $("panel").legacyDisabled = `<div class="card"><p><b>${o.users}</b> users · <b>${o.pro_rows}</b> active sub rows · env <code>${o.app_env}</code></p>
+        <p class="ok">Services: ${o.services.join(", ")}</p></div>`;
+    }
+
+    async function users() {
+      const search = $("userQ") ? $("userQ").value.trim() : "";
+      const q = new URLSearchParams();
+      if (svc()) q.set("service", svc());
+      if (search) q.set("q", search);
+      const data = await api("/admin/users" + (q.toString() ? "?" + q.toString() : ""));
+      const list = data.users || [];
+      const rows = list.map((u, i) => `<tr data-i="${i}" style="cursor:pointer">
+        <td>${u.id}</td><td>${esc(u.email)}</td><td>${esc((u.oauth_providers || []).join(", "))}</td>
+        <td>${esc(u.service || "")}</td><td>${esc(u.status || "free")}</td>
+        <td>${u.stripe_sub_id ? "stripe" : ""}</td><td>${esc(u.promo_expires_at || "")}</td></tr>`).join("");
+      $("panel").legacyDisabled = `<div class="card">
+        <p style="font-size:13px;color:#64748b">Search by email or id. Click a row to edit Pro, promo, Stripe, password, or delete.</p>
+        <div class="row">
+          <label>Search <input id="userQ" value="${esc(search)}" placeholder="email or id" /></label>
+          <button id="userLoad">Load</button>
+        </div>
+        <p id="userMsg" class="ok"></p>
+        <div class="table-wrap"><table>
+          <thead><tr><th>id</th><th>email</th><th>oauth</th><th>service</th><th>status</th><th>pay</th><th>promo exp</th></tr></thead>
+          <tbody>${rows || "<tr><td colspan=7>No users</td></tr>"}</tbody>
+        </table></div>
+        <div id="userEdit"></div>
+      </div>`;
+      $("userLoad").onclick = () => users();
+      $("userQ").onkeydown = (e) => { if (e.key === "Enter") users(); };
+      const msg = (t, ok) => { $("userMsg").textContent = t; $("userMsg").className = ok ? "ok" : "err"; };
+      $("panel").querySelectorAll("tr[data-i]").forEach((tr) => {
+        tr.onclick = () => showUserEdit(list[Number(tr.dataset.i)], msg);
+      });
+    }
+
+    function showUserEdit(u, msg) {
+      const box = $("userEdit");
+      box.legacyDisabled = `<div class="card" style="margin-top:1rem">
+        <h3>Edit user ${u.id}</h3>
+        <div class="row">
+          <label>Email <input id="ueEmail" value="${esc(u.email)}" /></label>
+          <label>Set password <input id="uePass" type="password" placeholder="leave blank to keep" autocomplete="new-password" /></label>
+          <label>Stripe customer <input id="ueCust" value="${esc(u.stripe_customer_id || "")}" /></label>
+        </div>
+        <div class="row" style="margin-top:.5rem">
+          <label>Service <input id="ueSvc" value="${esc(u.service || svc() || "tiktok-seller-tool")}" /></label>
+          <label>Status
+            <select id="ueStatus">
+              <option value="free"${(u.status || "free") !== "active" ? " selected" : ""}>free</option>
+              <option value="active"${u.status === "active" ? " selected" : ""}>active (Pro)</option>
+            </select>
+          </label>
+          <label>Stripe sub id <input id="ueStripe" value="${esc(u.stripe_sub_id || "")}" /></label>
+          <label>Promo expires <input id="uePromoExp" value="${esc(u.promo_expires_at || "")}" placeholder="ISO timestamp" /></label>
+          <label>Apply promo code <input id="uePromoCode" placeholder="LAUNCH30" /></label>
+        </div>
+        <div class="row" style="margin-top:.75rem">
+          <button id="ueSave">Save</button>
+          <button id="ueReset">Generate password reset</button>
+          <button id="ueDel">Delete user</button>
+        </div>
+        <p id="ueTemp" class="ok"></p>
+      </div>`;
+      $("ueSave").onclick = async () => {
+        try {
+          const body = {
+            email: $("ueEmail").value.trim(),
+            password: $("uePass").value,
+            stripe_customer_id: $("ueCust").value.trim(),
+            clear_stripe_customer: !$("ueCust").value.trim() && !!u.stripe_customer_id,
+            service: $("ueSvc").value.trim() || "tiktok-seller-tool",
+            status: $("ueStatus").value,
+            stripe_sub_id: $("ueStripe").value.trim(),
+            clear_stripe_sub: !$("ueStripe").value.trim() && !!u.stripe_sub_id,
+            promo_expires_at: $("uePromoExp").value.trim(),
+            clear_promo: !$("uePromoExp").value.trim() && !!u.promo_expires_at,
+            promo_code: $("uePromoCode").value.trim() || null,
+          };
+          if (!body.password) delete body.password;
+          await api("/admin/users/" + u.id, { method: "PATCH", body: JSON.stringify(body) });
+          msg("Saved", true);
+          users();
+        } catch (e) { msg(e.message, false); }
+      };
+      $("ueReset").onclick = async () => {
+        try {
+          const res = await api("/admin/users/" + u.id + "/reset-password", { method: "POST" });
+          $("ueTemp").textContent = "Temporary password (shown once): " + res.temporary_password;
+          msg("Password reset. Copy it now.", true);
+        } catch (e) { msg(e.message, false); }
+      };
+      $("ueDel").onclick = async () => {
+        if (!confirm("Delete user " + u.email + "?")) return;
+        try {
+          await api("/admin/users/" + u.id + "/delete", { method: "POST" });
+          msg("Deleted", true);
+          users();
+        } catch (e) { msg(e.message, false); }
+      };
+    }
+
+    async function telemetry() {
+      const s = svc();
+      const search = $("telQ") ? $("telQ").value.trim() : "";
+      const q = new URLSearchParams({ days: "7" });
+      if (s) q.set("service", s);
+      const evQ = new URLSearchParams({ limit: "80" });
+      if (s) evQ.set("service", s);
+      if (search) evQ.set("q", search);
+      const sum = await api("/admin/telemetry/summary?" + q.toString());
+      const ev = await api("/admin/telemetry/events?" + evQ.toString());
+      const counts = (sum.counts || []).map((c) => `<tr><td>${c.service}</td><td>${c.event}</td><td>${c.n}</td></tr>`).join("");
+      const events = (ev.events || []).map((e) => `<tr><td>${esc(e.ts)}</td><td>${esc(e.event)}</td><td>${esc(e.email || e.user_id || "")}</td><td><code>${esc(JSON.stringify(e.properties).slice(0, 160))}</code></td></tr>`).join("");
+      $("panel").legacyDisabled = `<div class="card"><h3>Last 7 days</h3><table><thead><tr><th>service</th><th>event</th><th>n</th></tr></thead><tbody>${counts}</tbody></table></div>
+        <div class="card"><h3>Live-ish feed</h3>
+          <div class="row"><label>Search email / id / payload <input id="telQ" value="${esc(search)}" /></label><button id="telLoad">Load</button></div>
+          <table style="margin-top:.75rem"><thead><tr><th>ts</th><th>event</th><th>email</th><th>props</th></tr></thead><tbody>${events}</tbody></table></div>`;
+      $("telLoad").onclick = () => telemetry();
+      $("telQ").onkeydown = (e) => { if (e.key === "Enter") telemetry(); };
+    }
+
+    async function promos() {
+      const data = await api("/admin/promos");
+      const rows = data.promos.map((p) => `<tr><td><code>${p.code}</code></td><td>${p.service}</td><td>${p.duration_days}d</td>
+        <td>${p.redeemed_count}/${p.max_redemptions ?? "∞"}</td><td>${p.active ? "on" : "off"}</td>
+        <td><button data-toggle="${p.code}">toggle</button></td></tr>`).join("");
+      $("panel").legacyDisabled = `<div class="card">
+        <div class="row">
+          <label>New code <input id="pcode" placeholder="LAUNCH30" /></label>
+          <label>Days <input id="pdays" type="number" value="30" min="1" /></label>
+          <label>Max uses <input id="pmax" type="number" placeholder="blank = unlimited" /></label>
+          <button id="pcreate">Create (X days Pro)</button>
+        </div>
+        <table style="margin-top:1rem"><thead><tr><th>code</th><th>service</th><th>days</th><th>uses</th><th>active</th><th></th></tr></thead><tbody>${rows}</tbody></table>
+      </div>`;
+      $("pcreate").onclick = async () => {
+        const maxRaw = $("pmax").value;
+        await api("/admin/promos", {
+          method: "POST",
+          body: JSON.stringify({
+            code: $("pcode").value,
+            service: svc() || "tiktok-seller-tool",
+            duration_days: Number($("pdays").value || 30),
+            max_redemptions: maxRaw ? Number(maxRaw) : null,
+          }),
+        });
+        promos();
+      };
+      $("panel").querySelectorAll("[data-toggle]").forEach((b) => {
+        b.onclick = async () => {
+          await api("/admin/promos/" + encodeURIComponent(b.dataset.toggle) + "/toggle", { method: "POST" });
+          promos();
+        };
+      });
+    }
+
+    async function config() {
+      const service = svc() || "tiktok-seller-tool";
+      const data = await fetch("/config/remote?service=" + encodeURIComponent(service)).then((r) => r.json());
+      const announcement = (data.config && data.config.announcement) || "";
+      $("panel").legacyDisabled = `<div class="card">
+        <p>Shown in the extension popup. Does not replace a Chrome Web Store update.</p>
+        <label>announcement<textarea id="ann" rows="3" style="width:100%;margin-top:.3rem">${String(announcement).replace(/</g, "")}</textarea></label>
+        <button id="saveCfg" style="margin-top:.75rem">Push announcement</button>
+        <pre style="font-size:12px;margin-top:1rem">${JSON.stringify(data.config || {}, null, 2)}</pre>
+      </div>`;
+      $("saveCfg").onclick = async () => {
+        await api("/admin/config", {
+          method: "PUT",
+          body: JSON.stringify({ service, key: "announcement", value: $("ann").value }),
+        });
+        config();
+      };
+    }
+
+    $("unlock").onclick = async () => {
+      key = $("key").value.trim();
+      try {
+        await api("/admin/overview");
+        sessionStorage.setItem("opsKey", key);
+        $("login").hidden = true;
+        $("app").hidden = false;
+        overview();
+      } catch (e) {
+        $("loginMsg").textContent = e.message;
+      }
+    };
+    if (key) $("unlock").click();
+    document.querySelectorAll(".tab[data-tab]").forEach((b) => b.onclick = () => show(b.dataset.tab));
+    $("service").onchange = () => {
+      const on = document.querySelector(".tab.on");
+      if (on) show(on.dataset.tab);
+    };
+  </script>
+</body>
+</html>

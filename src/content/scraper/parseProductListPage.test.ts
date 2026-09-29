@@ -59,6 +59,17 @@ describe("parseProductListPage", () => {
     expect(items[0]?.listPrice).toBe(45);
   });
 
+  it("n6_promotion_price_is_the_active_price", () => {
+    const doc = new DOMParser().parseFromString(DIV_GRID_HTML, "text/html");
+    const items = parseProductListPage(
+      doc,
+      "https://seller-us.tiktok.com/product/manage?shop_region=US",
+    );
+    const row = items.find((item) => item.skuId === "1732672081725330342");
+    expect(row?.listPrice).toBe(36);
+    expect(row?.listPriceOriginal).toBe(45);
+  });
+
   it("extracts from div grid via product links", () => {
     const doc = new DOMParser().parseFromString(DIV_GRID_HTML, "text/html");
     const items = parseProductListPage(
@@ -67,5 +78,60 @@ describe("parseProductListPage", () => {
     );
     expect(items.some((i) => i.skuId === "1732672081725330342")).toBe(true);
     expect(items.some((i) => i.title.includes("Ailun"))).toBe(true);
+  });
+
+  it("ignores page chrome and keeps the listing title", () => {
+    const html = `
+      <main class="product-manage">
+        <h1>Manage products</h1>
+        <header><span>Seller Center</span></header>
+        <button>Combined listings</button>
+        <button>Bulk actions</button>
+        <button>Add product</button>
+        <div class="product-promo">All 🔥 Spotlight productsEvergreen pro $1.00</div>
+        <div class="row"><div>Category</div><div>Category</div></div>
+        <div class="product-row">
+          <img alt="" />
+          <div>
+            <span>Ailun Screen Protector + Camera Lens Protector for iPhone 16 Pro Max</span>
+            <span>ID:1732672081725330342</span>
+          </div>
+          <span>Live</span>
+          <span>$45.00</span>
+          <span>Promotion: $36.00</span>
+        </div>
+      </main>
+    `;
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    const items = parseProductListPage(
+      doc,
+      "https://seller-us.tiktok.com/product/manage",
+    );
+    expect(items).toHaveLength(1);
+    expect(items[0]?.skuId).toBe("1732672081725330342");
+    expect(items[0]?.title).toContain("Ailun Screen Protector");
+    expect(items[0]?.title).not.toMatch(/category|spotlight|evergreen/i);
+    expect(items[0]?.listPrice).toBe(36);
+    expect(items[0]?.listPriceOriginal).toBe(45);
+  });
+
+  it("reads a strikethrough price when the promo label is gone", () => {
+    const html = `
+      <main>
+        <h1>Manage products</h1>
+        <div class="product-row">
+          <span>Ailun Screen Protector for iPhone 16 Pro Max</span>
+          <span>ID:1732672081725330342</span>
+          <span>Live</span>
+          <s>$45.00</s>
+          <span>$36.00</span>
+        </div>
+      </main>
+    `;
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    const items = parseProductListPage(doc, "https://seller-us.tiktok.com/product/manage");
+    expect(items[0]?.listPrice).toBe(36);
+    expect(items[0]?.listPriceOriginal).toBe(45);
+    expect(items[0]?.status).toBe("Live");
   });
 });

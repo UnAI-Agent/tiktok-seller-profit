@@ -1,0 +1,7 @@
+products:
+  - id: marginmark
+    name: MarginMark
+    adminApiBaseUrl: https://marginmark-api-prod.fly.dev
+    adminApiTokenEnv: MARGINMARK_ADMIN_API_TOKEN
+    grafanaFolder: MarginMark
+    configSigningKeyEnv: CONFIG_SIGNING_KEY

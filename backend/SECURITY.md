@@ -10,6 +10,8 @@ The **database never ships inside the extension**. Only the API URL is configure
 - Policy on register: 8+ characters with at least 3 of: upper, lower, digit, special.
 - Legacy SHA-256 hashes are upgraded to bcrypt on next successful login.
 - Forgot-password always returns success (no account enumeration).
+- OAuth-only users get a random bcrypt hash so password login cannot be used until they register a password on that email.
+- Owner ops (`/ops`) is gated by `TELEMETRY_ADMIN_KEY`. It is not bundled in the extension. The Database tab never runs client SQL; table/column names are allowlisted identifiers. `password_hash` and `code_verifier` are not returned; new passwords are hashed with bcrypt.
 
 ## SQL injection
 
@@ -17,7 +19,7 @@ All queries use **parameterized** `?` placeholders (SQLite / `%s` on Postgres). 
 
 ## XSS
 
-- API returns **JSON**; no HTML rendering on the server.
+- API returns **JSON** except the OAuth landing page (`/auth/oauth/done`), which is static HTML with escaped copy. JWT is never written into that page.
 - Extension UI is **React** (escaped by default). Do not use `dangerouslySetInnerHTML` for user or scraped content.
 - Passwords are **not** stored in `chrome.storage` — only the JWT after login.
 
@@ -27,11 +29,20 @@ Popup origin is `chrome-extension://<id>`. Credentials + `allow_origins=["*"]` i
 
 ## Rate limits
 
-120 requests / minute / IP. `Retry-After` is set on 429. Webhooks and `/health` are excluded.
+120 requests / minute / IP. `Retry-After` is set on 429. Webhooks, `/health`, and GET `/auth/oauth/*` are excluded.
 
 ## Error responses
 
 Production (`ENV=production`) never returns stack traces. JWT_SECRET is required in production.
+
+## OAuth (Google, Facebook, TikTok)
+
+- Authorization-code flow. Client secrets stay in backend env — never in the extension.
+- Google and TikTok use PKCE (S256). Facebook uses app `client_secret` + `appsecret_proof`.
+- CSRF `state` is single-use and expires in 10 minutes.
+- After callback the API issues a **one-time ticket** (2 minutes). The JWT is returned only from `POST /auth/oauth/exchange`.
+- Redirect URIs must be `{PUBLIC_BASE_URL}/auth/oauth/{google|facebook|tiktok}/callback`.
+- Google accounts require a verified email. TikTok Login Kit often has no email; those users get a non-routable `@oauth.tiktok-seller-tool.invalid` address.
 
 ## Secrets
 

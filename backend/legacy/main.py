@@ -9,7 +9,7 @@ Scale:  Swap SQLite for Postgres via DATABASE_URL env var
 
 from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 from typing import Optional
@@ -36,6 +36,10 @@ from security.passwords import (
     validate_password,
     verify_password,
 )
+import oauth as oauth_mod
+from billing_env import assert_stripe_keys_match_env, checkout_extra
+import promo as promo_mod
+import admin_db
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
@@ -46,6 +50,7 @@ logger = logging.getLogger(__name__)
 # localhost:8000 HTTP is OK for development only.
 # TODO: Migrate to PostgreSQL before 1000+ users (set DATABASE_URL). SQLite is alpha-only.
 ENV = os.getenv("ENV", "development").lower()
+APP_ENV = os.getenv("APP_ENV", "local").lower()  # local | lle | prod
 ANTHROPIC_API_KEY     = os.getenv("ANTHROPIC_API_KEY")
 STRIPE_SECRET_KEY     = os.getenv("STRIPE_SECRET_KEY")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
@@ -58,6 +63,8 @@ if not _jwt_secret:
 JWT_SECRET            = _jwt_secret
 TELEMETRY_ADMIN_KEY   = os.getenv("TELEMETRY_ADMIN_KEY", "")
 FRONTEND_URL          = os.getenv("FRONTEND_URL", "https://mail.google.com")
+PUBLIC_BASE_URL       = os.getenv("PUBLIC_BASE_URL", "").strip().rstrip("/")
+assert_stripe_keys_match_env(APP_ENV, STRIPE_SECRET_KEY)
 
 stripe.api_key = STRIPE_SECRET_KEY
 ai = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
@@ -182,7 +189,7 @@ If the email is clearly not a real estate lead (spam, newsletters, unrelated):
     },
 
     "tiktok-seller-tool": {
-        "name": "TikTok Seller Tool",
+        "name": "MarginMark",
         "free_limit": 10,
         "pro_price_id": os.getenv("STRIPE_PRICE_TIKTOK_SELLER"),
         "pro_price_id_yearly": os.getenv("STRIPE_PRICE_TIKTOK_SELLER_YEARLY"),
@@ -234,6 +241,66 @@ def current_user(creds: HTTPAuthorizationCredentials = Depends(security)):
     if not user: raise HTTPException(401, "User not found")
     return dict(user)
 
+def billing_return_base() -> str:
+    if PUBLIC_BASE_URL:
+        return PUBLIC_BASE_URL
+    return FRONTEND_URL.rstrip("/")
+
+def oauth_public_base(request: Request) -> str:
+    if PUBLIC_BASE_URL:
+        return PUBLIC_BASE_URL
+    if ENV == "production":
+        raise HTTPException(503, "PUBLIC_BASE_URL is required in production")
+    return str(request.base_url).rstrip("/")
+
+def oauth_done_redirect(
+    error: Optional[str] = None,
+    ticket: Optional[str] = None,
+    client: Optional[str] = None,
+) -> RedirectResponse:
+    from urllib.parse import quote
+    if ticket:
+        url = f"/auth/oauth/done?ticket={quote(ticket, safe='')}"
+        ext = oauth_mod.normalize_ext_id(client)
+        if ext:
+            url += f"&client={quote(ext, safe='')}"
+        return RedirectResponse(url=url, status_code=302)
+    code = error or "invalid"
+    return RedirectResponse(url=f"/auth/oauth/done?error={quote(code, safe='')}", status_code=302)
+
+def oauth_done_html(
+    error: Optional[str] = None,
+    ticket: Optional[str] = None,
+    client: Optional[str] = None,
+) -> HTMLResponse:
+    import html as html_mod
+    ok = not error
+    title = "Signed in" if ok else "Sign-in could not finish"
+    message = html_mod.escape(oauth_mod.done_message(error))
+    heading = html_mod.escape(title)
+    ticket_attr = html_mod.escape(ticket or "", quote=True)
+    ext = oauth_mod.normalize_ext_id(client)
+    ext_attr = html_mod.escape(ext, quote=True)
+    ping = ""
+    if ok and ticket and ext:
+        ping = f"""<script>
+(function(){{
+  var ticket = {json.dumps(ticket)};
+  var ext = {json.dumps(ext)};
+  location.replace("chrome-extension://" + ext + "/oauth-finish.html?ticket=" + encodeURIComponent(ticket));
+}})();
+</script>"""
+    body = f"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>{heading}</title>
+<style>body{{font-family:system-ui,sans-serif;max-width:28rem;margin:3rem auto;padding:0 1rem;color:#0f172a;line-height:1.45}}</style>
+</head><body>
+<h1>{heading}</h1>
+<p>{message}</p>
+<div id="tst-oauth-ticket" data-ticket="{ticket_attr}" data-ext="{ext_attr}" hidden></div>
+{ping}
+</body></html>"""
+    return HTMLResponse(body, status_code=200 if ok else 400)
+
 # ─── Usage helpers ──────────────────────────────────────────────────────────────
 def get_usage(uid: int, service: str) -> int:
     db = get_db()
@@ -255,19 +322,22 @@ def inc_usage(uid: int, service: str):
 def get_sub(uid: int, service: str) -> str:
     db = get_db()
     row = db.execute(
-        "SELECT status FROM subscriptions WHERE user_id=? AND service=?",
+        "SELECT status, stripe_sub_id, promo_expires_at FROM subscriptions WHERE user_id=? AND service=?",
         (uid, service)
     ).fetchone()
     db.close()
-    return row["status"] if row else "free"
+    return promo_mod.effective_sub_status(row)
 
-def set_sub(uid: int, service: str, status: str, stripe_sub_id: str = None):
+def set_sub(uid: int, service: str, status: str, stripe_sub_id: str = None, promo_expires_at: str = None):
     db = get_db()
     db.execute("""
-        INSERT INTO subscriptions (user_id, service, status, stripe_sub_id)
-        VALUES (?,?,?,?)
-        ON CONFLICT(user_id, service) DO UPDATE SET status=?, stripe_sub_id=?
-    """, (uid, service, status, stripe_sub_id, status, stripe_sub_id))
+        INSERT INTO subscriptions (user_id, service, status, stripe_sub_id, promo_expires_at)
+        VALUES (?,?,?,?,?)
+        ON CONFLICT(user_id, service) DO UPDATE SET
+            status=?,
+            stripe_sub_id=COALESCE(?, subscriptions.stripe_sub_id),
+            promo_expires_at=COALESCE(?, subscriptions.promo_expires_at)
+    """, (uid, service, status, stripe_sub_id, promo_expires_at, status, stripe_sub_id, promo_expires_at))
     db.commit(); db.close()
 
 # ─── Cache helpers ──────────────────────────────────────────────────────────────
@@ -342,18 +412,21 @@ def emit(
     user_id: int | None = None,
     source: str = "server",
 ):
-    data = data or {}
+    data = dict(data or {})
     ts = datetime.utcnow().isoformat()
     uid = user_id if user_id is not None else data.get("user_id")
-    row = {
-        "ts": ts,
-        "service": service,
-        "event": event,
-        **{k: v for k, v in data.items() if k != "user_id"},
-    }
-    logger.info(json.dumps(row))
     try:
         db = get_db()
+        if uid and not data.get("email"):
+            row = db.execute("SELECT email FROM users WHERE id=?", (uid,)).fetchone()
+            if row and row["email"]:
+                data["email"] = row["email"]
+        logger.info(json.dumps({
+            "ts": ts,
+            "service": service,
+            "event": event,
+            **{k: v for k, v in data.items() if k != "user_id"},
+        }))
         db.execute(
             """INSERT INTO telemetry_events (ts, service, event, user_id, payload_json, source)
                VALUES (?,?,?,?,?,?)""",
@@ -388,6 +461,13 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
         if path in ("/health", "/stripe/webhook", "/billing/webhook"):
+            return await call_next(request)
+        if request.method == "GET" and (
+            path.startswith("/auth/oauth/")
+            or path == "/billing/done"
+            or path == "/ops"
+            or path.startswith("/config/remote")
+        ):
             return await call_next(request)
         ip = request.client.host if request.client else "unknown"
         now = time.time()
@@ -477,6 +557,42 @@ class SkuSyncReq(BaseModel):
     service: str = "tiktok-seller-tool"
     skus: list[dict] = Field(default_factory=list, max_length=500)
 
+class OAuthTicketReq(BaseModel):
+    ticket: str = Field(min_length=16, max_length=128)
+
+class PromoRedeemReq(BaseModel):
+    service: str = "tiktok-seller-tool"
+    code: str = Field(min_length=4, max_length=32)
+
+class AdminPromoReq(BaseModel):
+    code: str = Field(min_length=4, max_length=32)
+    service: str = "tiktok-seller-tool"
+    duration_days: int = Field(default=30, ge=1, le=366)
+    max_redemptions: Optional[int] = Field(default=None, ge=1)
+
+class AdminConfigReq(BaseModel):
+    service: str = "tiktok-seller-tool"
+    key: str = Field(min_length=1, max_length=64)
+    value: str = Field(max_length=4000)
+
+class AdminDbWriteReq(BaseModel):
+    table: str = Field(min_length=1, max_length=64)
+    values: dict = Field(default_factory=dict)
+    pk: Optional[dict] = None
+
+class AdminUserPatchReq(BaseModel):
+    email: Optional[str] = None
+    password: Optional[str] = None
+    stripe_customer_id: Optional[str] = Field(default=None, max_length=255)
+    clear_stripe_customer: bool = False
+    service: str = "tiktok-seller-tool"
+    status: Optional[str] = None
+    stripe_sub_id: Optional[str] = None
+    promo_expires_at: Optional[str] = None
+    clear_stripe_sub: bool = False
+    clear_promo: bool = False
+    promo_code: Optional[str] = None
+
 class ProfileReq(BaseModel):
     service: str
     business_name:  Optional[str] = None
@@ -505,7 +621,7 @@ async def register(req: AuthReq):
     db.commit()
     uid = cur.lastrowid
     db.close()
-    emit("user.registered", "platform", {"user_id": uid}, user_id=uid)
+    emit("user.registered", "tiktok-seller-tool", {"email": email}, user_id=uid)
     return {"access_token": make_token(uid)}
 
 @app.post("/auth/login")
@@ -522,8 +638,10 @@ async def login(req: AuthReq):
             (hash_password(req.password), user["id"]),
         )
         db.commit()
+    uid = user["id"]
     db.close()
-    return {"access_token": make_token(user["id"])}
+    emit("auth.login", "tiktok-seller-tool", {"email": email}, user_id=uid)
+    return {"access_token": make_token(uid)}
 
 @app.post("/auth/forgot-password")
 async def forgot_password(req: ForgotPasswordReq):
@@ -536,24 +654,116 @@ async def forgot_password(req: ForgotPasswordReq):
         "message": "If that account exists, reset instructions were sent.",
     }
 
-@app.get("/auth/oauth/{provider}")
-async def oauth_start(provider: str, mode: str = "login"):
-    """Placeholder until Firebase/OAuth is wired — frontend opens this URL."""
-    raise HTTPException(
-        501,
-        f"OAuth ({provider}, {mode}) not configured yet. Use email/password at /auth/login.",
+@app.get("/auth/oauth/done")
+async def oauth_done(
+    ticket: Optional[str] = None,
+    error: Optional[str] = None,
+    client: Optional[str] = None,
+):
+    """Browser landing after OAuth. JWT is never placed in this page."""
+    return oauth_done_html(
+        None if ticket else (error or "invalid"),
+        ticket=ticket,
+        client=client,
     )
+
+
+@app.get("/auth/oauth/{provider}")
+async def oauth_start(provider: str, request: Request, mode: str = "login", client: str = ""):
+    provider = provider.lower()
+    if provider not in oauth_mod.PROVIDERS:
+        return oauth_done_redirect("invalid")
+    if mode not in ("login", "signup"):
+        mode = "login"
+    try:
+        public_base = oauth_public_base(request)
+        oauth_mod.load_provider_app(provider)
+        state, challenge = oauth_mod.create_flow(
+            provider, mode, oauth_mod.normalize_ext_id(client)
+        )
+        url = oauth_mod.authorize_url(
+            provider,
+            public_base=public_base,
+            state=state,
+            code_challenge=challenge,
+        )
+    except HTTPException:
+        raise
+    except oauth_mod.OAuthError as exc:
+        return oauth_done_redirect(exc.code)
+    except Exception:
+        logger.exception("oauth start failed")
+        return oauth_done_redirect("invalid")
+    return RedirectResponse(url=url, status_code=302)
+
+
+@app.get("/auth/oauth/{provider}/callback")
+async def oauth_callback(
+    provider: str,
+    request: Request,
+    code: Optional[str] = None,
+    state: Optional[str] = None,
+    error: Optional[str] = None,
+):
+    provider = provider.lower()
+    if provider not in oauth_mod.PROVIDERS:
+        return oauth_done_redirect("invalid")
+    if error:
+        return oauth_done_redirect("denied" if error == "access_denied" else "provider")
+    if not code or not state:
+        return oauth_done_redirect("invalid")
+    try:
+        public_base = oauth_public_base(request)
+        verifier, client = oauth_mod.pop_flow(state, provider)
+        profile = await oauth_mod.exchange_code_for_profile(
+            provider,
+            public_base=public_base,
+            code=code,
+            code_verifier=verifier,
+        )
+        uid, created = oauth_mod.find_or_create_oauth_user(profile)
+        ticket = oauth_mod.issue_ticket(uid)
+        emit(
+            "auth.oauth_register" if created else "auth.oauth_login",
+            "tiktok-seller-tool",
+            {"provider": provider, "email": profile.email},
+            user_id=uid,
+        )
+        return oauth_done_redirect(ticket=ticket, client=client)
+    except HTTPException:
+        raise
+    except oauth_mod.OAuthError as exc:
+        return oauth_done_redirect(exc.code)
+    except Exception:
+        logger.exception("oauth callback failed")
+        return oauth_done_redirect("provider")
+
+
+@app.post("/auth/oauth/exchange")
+async def oauth_exchange(req: OAuthTicketReq):
+    uid = oauth_mod.consume_ticket(req.ticket)
+    if not uid:
+        raise HTTPException(401, "Sign-in expired. Try again from the extension.")
+    return {"access_token": make_token(uid)}
 
 @app.get("/auth/me")
 async def me(service: str = "ai-reply", user: dict = Depends(current_user)):
     svc = get_service(service)
-    is_pro = get_sub(user["id"], service) == "active"
+    db = get_db()
+    sub = db.execute(
+        "SELECT status, stripe_sub_id, promo_expires_at FROM subscriptions WHERE user_id=? AND service=?",
+        (user["id"], service),
+    ).fetchone()
+    db.close()
+    is_pro = promo_mod.effective_sub_status(sub) == "active"
     return {
         "id": user["id"],
         "email": user["email"],
         "service": service,
         "is_pro": is_pro,
         "subscription_status": "active" if is_pro else "free",
+        "promo_expires_at": (sub or {}).get("promo_expires_at") if is_pro else None,
+        "has_stripe": bool(sub and sub.get("stripe_sub_id")),
         "usage_today": get_usage(user["id"], service),
         "usage_limit": -1 if is_pro else svc["free_limit"],
         "pro_price": svc["pro_price_monthly"],
@@ -855,26 +1065,385 @@ async def create_checkout(req: CheckoutReq, user: dict = Depends(current_user)):
         db.execute("UPDATE users SET stripe_customer_id=? WHERE id=?", (cid, user["id"]))
         db.commit()
     db.close()
+    ret = billing_return_base()
     session = stripe.checkout.Session.create(
         customer=cid,
         payment_method_types=["card"],
         line_items=[{"price": price_id, "quantity": 1}],
         mode="subscription",
-        success_url=f"{FRONTEND_URL}?reply_success=1",
-        cancel_url=f"{FRONTEND_URL}?reply_cancel=1",
-        metadata={"user_id": str(user["id"]), "service": req.service}
+        success_url=f"{ret}/billing/done?ok=1",
+        cancel_url=f"{ret}/billing/done?ok=0",
+        metadata={"user_id": str(user["id"]), "service": req.service},
+        **checkout_extra(req.service),
     )
     return {"url": session.url}
 
 @app.post("/stripe/portal")
+@app.post("/billing/portal")
 async def portal(user: dict = Depends(current_user)):
     db = get_db()
     cid = db.execute("SELECT stripe_customer_id FROM users WHERE id=?",
                      (user["id"],)).fetchone()["stripe_customer_id"]
     db.close()
     if not cid: raise HTTPException(400, "No subscription found")
-    sess = stripe.billing_portal.Session.create(customer=cid, return_url=FRONTEND_URL)
+    sess = stripe.billing_portal.Session.create(
+        customer=cid,
+        return_url=f"{billing_return_base()}/billing/done?ok=1",
+    )
     return {"url": sess.url}
+
+@app.get("/billing/done")
+async def billing_done(ok: Optional[str] = "1"):
+    """Landing after Stripe Checkout. Pro is granted by the webhook, not this page."""
+    paid = ok not in ("0", "false", "cancel")
+    title = "You're all set" if paid else "Checkout cancelled"
+    message = (
+        "Return to the MarginMark popup. Pro unlocks a few seconds after payment."
+        if paid
+        else "No charge. You can try Upgrade to Pro again from the extension."
+    )
+    heading = title
+    body = f"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>MarginMark — {heading}</title>
+<style>body{{font-family:system-ui,sans-serif;max-width:28rem;margin:3rem auto;padding:0 1rem;color:#0f172a;line-height:1.45}} a{{color:#0f172a}}</style>
+</head><body>
+<h1>{heading}</h1>
+<p>{message}</p>
+<p>MarginMark by Plainsman Software · <a href="https://plainsmansoftware.com/marginmark/privacy">Privacy</a> · <a href="https://plainsmansoftware.com/marginmark/terms">Terms</a></p>
+</body></html>"""
+    return HTMLResponse(body)
+
+@app.post("/billing/promo")
+async def redeem_billing_promo(req: PromoRedeemReq, user: dict = Depends(current_user)):
+    get_service(req.service)
+    db = get_db()
+    try:
+        result = promo_mod.redeem_promo(
+            db, user_id=user["id"], service=req.service, code=req.code
+        )
+        db.commit()
+    except promo_mod.PromoError as exc:
+        db.close()
+        raise HTTPException(exc.status, str(exc))
+    except Exception:
+        db.close()
+        raise
+    db.close()
+    emit("billing.promo_redeemed", req.service, {"code": result["code"]}, user_id=user["id"])
+    return result
+
+
+@app.get("/config/remote")
+async def remote_config(service: str = "tiktok-seller-tool"):
+    get_service(service)
+    db = get_db()
+    rows = db.execute(
+        "SELECT key, value_json FROM remote_config WHERE service=?",
+        (service,),
+    ).fetchall()
+    db.close()
+    out: dict = {}
+    for r in rows:
+        try:
+            out[r["key"]] = json.loads(r["value_json"])
+        except json.JSONDecodeError:
+            out[r["key"]] = r["value_json"]
+    return {"service": service, "config": out}
+
+
+_OPS_HTML = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "ops.html")
+
+
+@app.get("/ops")
+async def ops_console():
+    if not os.path.isfile(_OPS_HTML):
+        raise HTTPException(404, "Ops console missing")
+    return FileResponse(_OPS_HTML, media_type="text/html")
+
+
+@app.get("/admin/overview")
+async def admin_overview(request: Request, service: Optional[str] = None):
+    require_telemetry_admin(request)
+    db = get_db()
+    users = db.execute("SELECT COUNT(*) AS n FROM users").fetchone()["n"]
+    q = "SELECT COUNT(*) AS n FROM subscriptions WHERE status='active'"
+    params: list = []
+    if service:
+        q += " AND service=?"
+        params.append(service)
+    pro = db.execute(q, params).fetchone()["n"]
+    db.close()
+    return {
+        "users": users,
+        "pro_rows": pro,
+        "services": list(SERVICES.keys()),
+        "app_env": APP_ENV,
+    }
+
+
+@app.get("/admin/users")
+async def admin_users(
+    request: Request,
+    service: Optional[str] = None,
+    q: str = "",
+    limit: int = 200,
+):
+    require_telemetry_admin(request)
+    limit = min(max(limit, 1), 1000)
+    needle = q.strip().lower()
+    db = get_db()
+    join = "LEFT JOIN subscriptions s ON s.user_id=u.id"
+    params: list = []
+    if service:
+        join += " AND s.service=?"
+        params.append(service)
+    sql = f"""
+        SELECT u.id, u.email, u.created_at, u.stripe_customer_id,
+               s.service, s.status, s.stripe_sub_id, s.promo_expires_at
+        FROM users u
+        {join}
+    """
+    if needle:
+        sql += " WHERE (u.email LIKE ? OR CAST(u.id AS TEXT) LIKE ?)"
+        params.extend([f"%{needle}%", f"%{needle}%"])
+    sql += " ORDER BY u.id DESC LIMIT ?"
+    params.append(limit)
+    rows = db.execute(sql, params).fetchall()
+    ids = [r["id"] for r in rows]
+    providers: dict[int, list[str]] = {}
+    if ids:
+        placeholders = ",".join("?" for _ in ids)
+        idents = db.execute(
+            f"SELECT user_id, provider FROM oauth_identities WHERE user_id IN ({placeholders})",
+            ids,
+        ).fetchall()
+        for ident in idents:
+            providers.setdefault(int(ident["user_id"]), []).append(ident["provider"])
+    db.close()
+    users = []
+    for r in rows:
+        item = dict(r)
+        item["oauth_providers"] = providers.get(int(r["id"]), [])
+        users.append(item)
+    return {"users": users}
+
+
+@app.patch("/admin/users/{user_id}")
+async def admin_patch_user(user_id: int, req: AdminUserPatchReq, request: Request):
+    require_telemetry_admin(request)
+    if req.service != "*":
+        get_service(req.service)
+    db = get_db()
+    try:
+        touched_user = any(
+            [
+                req.email is not None,
+                req.password not in (None, ""),
+                req.stripe_customer_id is not None,
+                req.clear_stripe_customer,
+            ]
+        )
+        if touched_user:
+            admin_db.patch_user(
+                db,
+                user_id,
+                email=req.email,
+                password=req.password,
+                stripe_customer_id=req.stripe_customer_id,
+                clear_stripe_customer=req.clear_stripe_customer,
+            )
+        touched_sub = any(
+            [
+                req.status is not None,
+                req.stripe_sub_id is not None,
+                req.promo_expires_at is not None,
+                req.clear_stripe_sub,
+                req.clear_promo,
+            ]
+        )
+        if touched_sub:
+            admin_db.upsert_subscription(
+                db,
+                user_id,
+                req.service,
+                status=req.status,
+                stripe_sub_id=req.stripe_sub_id,
+                promo_expires_at=req.promo_expires_at,
+                clear_stripe_sub=req.clear_stripe_sub,
+                clear_promo=req.clear_promo,
+            )
+        promo_result = None
+        if req.promo_code:
+            try:
+                promo_result = promo_mod.redeem_promo(
+                    db,
+                    user_id=user_id,
+                    service=req.service,
+                    code=req.promo_code,
+                )
+                db.commit()
+            except promo_mod.PromoError as exc:
+                raise HTTPException(exc.status, str(exc)) from exc
+        if not touched_user and not touched_sub and not req.promo_code:
+            raise HTTPException(400, "No fields to update")
+        emit(
+            "admin.user_patched",
+            req.service,
+            {"user_id": user_id, "email": req.email or ""},
+            user_id=user_id,
+        )
+        return {"ok": True, "promo": promo_result}
+    except admin_db.AdminDbError as exc:
+        raise HTTPException(exc.status, exc.detail) from exc
+    finally:
+        db.close()
+
+
+@app.post("/admin/users/{user_id}/reset-password")
+async def admin_reset_password(user_id: int, request: Request):
+    require_telemetry_admin(request)
+    db = get_db()
+    try:
+        password = admin_db.reset_user_password(db, user_id)
+        emit("admin.password_reset", "tiktok-seller-tool", {"user_id": user_id}, user_id=user_id)
+        return {"ok": True, "temporary_password": password}
+    except admin_db.AdminDbError as exc:
+        raise HTTPException(exc.status, exc.detail) from exc
+    finally:
+        db.close()
+
+
+@app.post("/admin/users/{user_id}/delete")
+async def admin_delete_user(user_id: int, request: Request):
+    require_telemetry_admin(request)
+    db = get_db()
+    try:
+        admin_db.delete_user(db, user_id)
+        emit("admin.user_deleted", "tiktok-seller-tool", {"user_id": user_id})
+        return {"ok": True}
+    except admin_db.AdminDbError as exc:
+        raise HTTPException(exc.status, exc.detail) from exc
+    finally:
+        db.close()
+
+
+@app.get("/admin/promos")
+async def admin_list_promos(request: Request):
+    require_telemetry_admin(request)
+    db = get_db()
+    rows = db.execute("SELECT * FROM promo_codes ORDER BY created_at DESC").fetchall()
+    db.close()
+    return {"promos": [dict(r) for r in rows]}
+
+
+@app.post("/admin/promos")
+async def admin_create_promo(req: AdminPromoReq, request: Request):
+    require_telemetry_admin(request)
+    code = promo_mod.normalize_code(req.code)
+    if not promo_mod.CODE_RE.match(code):
+        raise HTTPException(400, "Code must be 4–32 chars: A–Z, 0–9, _-")
+    if req.service != "*" :
+        get_service(req.service)
+    db = get_db()
+    existing = db.execute("SELECT code FROM promo_codes WHERE code=?", (code,)).fetchone()
+    if existing:
+        db.close()
+        raise HTTPException(400, "Code already exists")
+    db.execute(
+        """INSERT INTO promo_codes (code, service, duration_days, max_redemptions, redeemed_count, active)
+           VALUES (?,?,?,?,0,1)""",
+        (code, req.service, req.duration_days, req.max_redemptions),
+    )
+    db.commit()
+    db.close()
+    emit("admin.promo_created", req.service, {"code": code, "days": req.duration_days})
+    return {"ok": True, "code": code}
+
+
+@app.post("/admin/promos/{code}/toggle")
+async def admin_toggle_promo(code: str, request: Request):
+    require_telemetry_admin(request)
+    code = promo_mod.normalize_code(code)
+    db = get_db()
+    row = db.execute("SELECT active FROM promo_codes WHERE code=?", (code,)).fetchone()
+    if not row:
+        db.close()
+        raise HTTPException(404, "Unknown code")
+    nxt = 0 if int(row["active"]) else 1
+    db.execute("UPDATE promo_codes SET active=? WHERE code=?", (nxt, code))
+    db.commit()
+    db.close()
+    return {"ok": True, "active": bool(nxt)}
+
+
+@app.put("/admin/config")
+async def admin_put_config(req: AdminConfigReq, request: Request):
+    require_telemetry_admin(request)
+    get_service(req.service)
+    key = req.key.strip()[:64]
+    db = get_db()
+    db.execute(
+        """INSERT INTO remote_config (service, key, value_json)
+           VALUES (?,?,?)
+           ON CONFLICT(service, key) DO UPDATE SET value_json=?, updated_at=CURRENT_TIMESTAMP""",
+        (req.service, key, json.dumps(req.value), json.dumps(req.value)),
+    )
+    db.commit()
+    db.close()
+    return {"ok": True}
+
+
+def _admin_db_call(fn, *args, **kwargs):
+    db = get_db()
+    try:
+        return fn(db, *args, **kwargs)
+    except admin_db.AdminDbError as exc:
+        raise HTTPException(exc.status, exc.detail) from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    finally:
+        db.close()
+
+
+@app.get("/admin/db/tables")
+async def admin_db_tables(request: Request):
+    require_telemetry_admin(request)
+    return {"tables": _admin_db_call(admin_db.list_tables)}
+
+
+@app.get("/admin/db/rows")
+async def admin_db_rows(
+    request: Request,
+    table: str,
+    q: str = "",
+    limit: int = 50,
+    offset: int = 0,
+):
+    require_telemetry_admin(request)
+    return _admin_db_call(admin_db.list_rows, table, q=q, limit=limit, offset=offset)
+
+
+@app.post("/admin/db/rows")
+async def admin_db_insert(req: AdminDbWriteReq, request: Request):
+    require_telemetry_admin(request)
+    return _admin_db_call(admin_db.insert_row, req.table, req.values or {})
+
+
+@app.put("/admin/db/rows")
+async def admin_db_update(req: AdminDbWriteReq, request: Request):
+    require_telemetry_admin(request)
+    if not req.pk:
+        raise HTTPException(400, "pk required")
+    return _admin_db_call(admin_db.update_row, req.table, req.pk, req.values or {})
+
+
+@app.post("/admin/db/rows/delete")
+async def admin_db_delete(req: AdminDbWriteReq, request: Request):
+    require_telemetry_admin(request)
+    if not req.pk:
+        raise HTTPException(400, "pk required")
+    return _admin_db_call(admin_db.delete_row, req.table, req.pk)
+
 
 @app.post("/stripe/webhook")
 @app.post("/billing/webhook")
@@ -974,27 +1543,38 @@ async def telemetry_events(
     request: Request,
     service: Optional[str] = None,
     event: Optional[str] = None,
+    q: str = "",
     limit: int = 500,
     since: Optional[str] = None,
 ):
     """Read events for your internal telemetry app (header: X-Admin-Key)."""
     require_telemetry_admin(request)
     limit = min(max(limit, 1), 5000)
-    q = "SELECT id, ts, service, event, user_id, payload_json, source FROM telemetry_events WHERE 1=1"
+    sql = """
+        SELECT t.id, t.ts, t.service, t.event, t.user_id, t.payload_json, t.source, u.email
+        FROM telemetry_events t
+        LEFT JOIN users u ON u.id = t.user_id
+        WHERE 1=1
+    """
     params: list = []
     if service:
-        q += " AND service=?"
+        sql += " AND t.service=?"
         params.append(service)
     if event:
-        q += " AND event=?"
+        sql += " AND t.event=?"
         params.append(event)
     if since:
-        q += " AND ts>=?"
+        sql += " AND t.ts>=?"
         params.append(since)
-    q += " ORDER BY id DESC LIMIT ?"
+    needle = q.strip()
+    if needle:
+        sql += " AND (u.email LIKE ? OR CAST(t.user_id AS TEXT) LIKE ? OR t.payload_json LIKE ?)"
+        like = f"%{needle}%"
+        params.extend([like, like, like])
+    sql += " ORDER BY t.id DESC LIMIT ?"
     params.append(limit)
     db = get_db()
-    rows = db.execute(q, params).fetchall()
+    rows = db.execute(sql, params).fetchall()
     db.close()
     return {
         "events": [
@@ -1004,6 +1584,7 @@ async def telemetry_events(
                 "service": r["service"],
                 "event": r["event"],
                 "user_id": r["user_id"],
+                "email": r["email"],
                 "properties": json.loads(r["payload_json"] or "{}"),
                 "source": r["source"],
             }
@@ -1038,6 +1619,7 @@ async def telemetry_summary(request: Request, service: Optional[str] = None, day
 async def health():
     body = {
         "status": "ok",
+        "app_env": APP_ENV,
         "services": list(SERVICES.keys()),
         "db": "postgres" if USE_POSTGRES else "sqlite",
         "ts": datetime.utcnow().isoformat(),
@@ -1046,3 +1628,9 @@ async def health():
         body["db_path"] = None if USE_POSTGRES else DB_PATH
         body["telemetry_admin"] = bool(TELEMETRY_ADMIN_KEY)
     return body
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=False)

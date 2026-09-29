@@ -20,7 +20,7 @@ Features:
 • (Pro) Creator performance tracking
 • (Pro) Competitor price comparison
 
-Free tier: 10 SKUs. Pro: Unlimited + premium features.
+Free: live profit on every product, with costs saved on 5 products. Pro: unlimited product costs, max safe creator commission, ad limits, fix advice, statement import, and CSV export.
 
 Privacy policy: host `store/privacy.html` at your HTTPS domain (placeholder URL until you publish it).
 

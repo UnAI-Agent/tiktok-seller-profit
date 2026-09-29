@@ -80,3 +80,21 @@ export function parseRetryAfterMs(header: string | null): number | undefined {
   if (Number.isFinite(seconds) && seconds > 0) return seconds * 1000;
   return undefined;
 }
+
+/** Message from an already-parsed error body. FastAPI sends `detail`; older paths send `error`. */
+export function errorTextFromJson(json: unknown, status: number): string {
+  if (json && typeof json === "object") {
+    const body = json as { detail?: unknown; error?: unknown; message?: unknown };
+    const pick = body.detail ?? body.error ?? body.message;
+    if (typeof pick === "string" && pick.length > 0 && pick.length < 280) return pick;
+    if (Array.isArray(pick)) {
+      const first = pick[0] as { msg?: unknown } | string | undefined;
+      if (typeof first === "string") return first;
+      if (first && typeof first.msg === "string") return first.msg;
+    }
+  }
+  if (status === 401) return "Invalid email or password.";
+  if (status === 403) return "That isn't allowed for this account.";
+  if (status === 429) return "Too many requests. Please wait a moment.";
+  return `Request failed (${status})`;
+}

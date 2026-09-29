@@ -1,11 +1,12 @@
 import { computeProfit } from "../lib/profit";
-import { effectiveShippingPerUnit } from "../lib/shippingCost";
+import { profitInputFor } from "../lib/skuEconomics";
 import { sendMessage } from "../lib/messages";
 import type { Settings } from "../types/settings";
 import type { SkuRecord } from "../types/sku";
 import { parseProductPage } from "./scraper/parseProductPage";
 import {
   isProductListPage,
+  looksLikeProductTitle,
   parseProductListPage,
   type ScrapedListItem,
 } from "./scraper/parseProductListPage";
@@ -18,10 +19,6 @@ export type SyncResult = {
   skipped: number;
   source: SyncSource;
 };
-
-function profitUnits(unitsSold: number): number {
-  return unitsSold > 0 ? unitsSold : 1;
-}
 
 function toSkuRecord(
   item: ScrapedListItem,
@@ -37,39 +34,38 @@ function toSkuRecord(
         : 0;
   const cogs = existing?.cogsPerUnit ?? settings.defaultCogs;
   const shipRaw = existing?.shippingOut ?? settings.defaultShippingOut;
-  const ship = effectiveShippingPerUnit(
-    shipRaw,
-    settings.shippingPassedToBuyer ?? true,
-  );
   const ads = existing?.adsPerUnit ?? settings.defaultAdsPerUnit;
-
-  const profit = computeProfit({
-    listPrice,
-    unitsSold: profitUnits(unitsSold),
-    cogsPerUnit: cogs,
-    shippingOut: ship,
-    adsPerUnit: ads,
-    platformFeePct: settings.platformFeePct,
-    paymentFeePct: settings.paymentFeePct,
-    paymentFixed: settings.paymentFixed,
-    refundRatePct: settings.refundRatePct,
-    salesTaxPct: settings.salesTaxPct,
-    packagingPerUnit: settings.packagingPerUnit,
-  });
-
-  return {
+  const draft: SkuRecord = {
     skuId: item.skuId,
     title: item.title || existing?.title || "Product",
     listPrice,
+    listPriceOriginal: item.listPriceOriginal ?? existing?.listPriceOriginal ?? null,
+    listingStatus: item.status ?? existing?.listingStatus ?? null,
+    stock: item.stock ?? existing?.stock ?? null,
     cogsPerUnit: cogs,
-    shippingOut: ship,
+    shippingOut: shipRaw,
     adsPerUnit: ads,
     unitsSold,
     refundRatePct: settings.refundRatePct,
-    netMarginPct: profit.netMarginPct,
-    netProfit: profit.netProfit,
+    netMarginPct: existing?.netMarginPct ?? 0,
+    netProfit: existing?.netProfit ?? 0,
     sourceUrl: window.location.href,
     updatedAt: new Date().toISOString(),
+    packagingPerUnit: existing?.packagingPerUnit ?? settings.packagingPerUnit,
+    affiliatePct: existing?.affiliatePct ?? settings.affiliateCommissionPct,
+    affiliateSharePct: existing?.affiliateSharePct ?? settings.affiliateSharePct,
+    skuIds: item.skuIds && item.skuIds.length > 0 ? item.skuIds : existing?.skuIds,
+    salesPeriod: existing?.salesPeriod,
+    costSource: existing?.costSource ?? "default",
+    samplesSent: existing?.samplesSent ?? 0,
+    sampleUnitCost: existing?.sampleUnitCost,
+    actualFees: existing?.actualFees,
+  };
+  const profit = computeProfit(profitInputFor(draft, settings));
+  return {
+    ...draft,
+    netMarginPct: profit.netMarginPct ?? 0,
+    netProfit: profit.netProfit,
   };
 }
 
@@ -91,6 +87,7 @@ export function collectSkuCandidates(
       items: [
         {
           skuId: single.skuId,
+          skuIds: single.skuIds,
           title: single.title,
           listPrice: single.listPrice,
           unitsSold: single.unitsSold,
@@ -142,6 +139,17 @@ export async function autoSyncSkusFromPage(
   const res = await sendMessage({ type: "SYNC_SKUS", skus });
   const saved = res.ok ? (res.saved ?? skus.length) : 0;
   const skipped = res.ok ? (res.skipped ?? 0) : 0;
+
+  const incomingIds = new Set(skus.map((s) => s.skuId));
+  const junkIds = [...existingById.values()]
+    .filter(
+      (s) => !incomingIds.has(s.skuId) && !looksLikeProductTitle(s.title),
+    )
+    .map((s) => s.skuId);
+  if (junkIds.length > 0) {
+    await sendMessage({ type: "REMOVE_SKUS", skuIds: junkIds });
+  }
+
   return { found: items.length, saved, skipped, source };
 }
 

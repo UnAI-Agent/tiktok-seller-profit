@@ -1,5 +1,7 @@
 import {
   mountOverlayFromSettings,
+  showInPagePanel,
+  toggleInPagePanel,
   watchOverlaySettings,
 } from "./mountOverlay";
 import {
@@ -17,11 +19,8 @@ function debounceRoute(fn: () => void, ms: number) {
 
 function hookSpaNavigation(onRoute: () => void) {
   const debounced = debounceRoute(onRoute, 500);
-  const push = history.pushState.bind(history);
-  history.pushState = (...args) => {
-    push(...args);
-    debounced();
-  };
+  const nav = (window as Window & { navigation?: EventTarget }).navigation;
+  nav?.addEventListener("currententrychange", debounced);
   window.addEventListener("popstate", debounced);
 }
 
@@ -33,6 +32,9 @@ try {
     void autoSyncSkusFromPage(false);
   });
   void mountOverlayFromSettings();
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") void mountOverlayFromSettings();
+  });
 
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     if (msg.type === "TST_PING") {
@@ -45,8 +47,16 @@ try {
       });
       return true;
     }
+    if (msg.type === "TOGGLE_INPAGE_PANEL") {
+      void toggleInPagePanel().then(() => sendResponse({ ok: true }));
+      return true;
+    }
+    if (msg.type === "SHOW_INPAGE_PANEL") {
+      void showInPagePanel().then(() => sendResponse({ ok: true }));
+      return true;
+    }
     return undefined;
   });
 } catch (err) {
-  console.error("[TikTok Seller Tool] content script failed", err);
+  console.error("[MarginMark] content script failed", err);
 }

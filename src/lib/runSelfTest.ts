@@ -59,8 +59,8 @@ export function runSelfTest(): SelfTestReport {
   });
   results.push({
     name: "Profit formula net margin",
-    pass: profit.netProfit > 0 && profit.netMarginPct > 15,
-    detail: `net=${profit.netProfit.toFixed(2)}, margin=${profit.netMarginPct.toFixed(1)}%`,
+    pass: profit.netProfit > 0 && profit.netMarginPct != null && profit.netMarginPct > 15,
+    detail: `net=${profit.netProfit.toFixed(2)}, margin=${profit.netMarginPct?.toFixed(1) ?? "n/a"}%`,
   });
 
   const passed = results.filter((r) => r.pass).length;

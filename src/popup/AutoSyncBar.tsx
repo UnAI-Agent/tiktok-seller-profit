@@ -1,8 +1,7 @@
-import {
-  isManageProductsUrl,
-  isSellerCenterUrl,
-  MANAGE_PRODUCTS_LINK,
-} from "../lib/sellerUrl";
+import { openTab } from "../lib/openTab";
+import { isManageProductsUrl, isSellerCenterUrl, MANAGE_PRODUCTS_LINK } from "../lib/sellerUrl";
+import { RefreshIcon } from "../ui/icons";
+import { Button } from "../ui/primitives";
 
 type AutoSyncBarProps = {
   tabUrl: string;
@@ -12,52 +11,31 @@ type AutoSyncBarProps = {
   onSync: () => void;
 };
 
-export default function AutoSyncBar({
-  tabUrl,
-  skuCount,
-  syncing,
-  lastMessage,
-  onSync,
-}: AutoSyncBarProps) {
+export default function AutoSyncBar({ tabUrl, skuCount, syncing, lastMessage, onSync }: AutoSyncBarProps) {
   const onSeller = isSellerCenterUrl(tabUrl);
   const onManage = isManageProductsUrl(tabUrl);
 
-  let status = "Open Seller Center — we sync listings automatically.";
-  if (onSeller && onManage) {
-    status = "Auto-syncing visible products on this page.";
-  } else if (onSeller) {
-    status = "Auto-syncing this product tab. Open Manage products for bulk import.";
-  }
+  let status = "Open Seller Center and we sync your listings.";
+  if (onSeller && onManage) status = "Syncing the products on this page.";
+  else if (onSeller) status = "Open Manage products to bring in all of them.";
 
   return (
-    <div className="mt-2 flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs">
+    <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs">
       <div className="min-w-0 flex-1">
-        <p className="font-medium text-slate-800">
-          {skuCount > 0 ? `${skuCount} SKUs` : "No SKUs yet"}
-          <span className="font-normal text-slate-500"> · {status}</span>
+        <p className="font-semibold text-slate-900">
+          {skuCount > 0 ? `${skuCount} product${skuCount === 1 ? "" : "s"}` : "No products yet"}
         </p>
-        {lastMessage && (
-          <p className="truncate text-[10px] text-slate-500">{lastMessage}</p>
-        )}
+        <p className="truncate text-slate-500">{lastMessage ?? status}</p>
       </div>
-      <button
-        type="button"
-        disabled={!onSeller || syncing}
-        title="Refresh from current tab"
-        className="shrink-0 rounded-md bg-slate-900 px-2.5 py-1.5 font-semibold text-white disabled:opacity-40"
-        onClick={onSync}
-      >
-        {syncing ? "…" : "Sync"}
-      </button>
       {!onManage && onSeller && (
-        <button
-          type="button"
-          className="shrink-0 rounded-md border border-slate-300 px-2 py-1.5 font-medium text-slate-700"
-          onClick={() => void chrome.tabs.create({ url: MANAGE_PRODUCTS_LINK })}
-        >
+        <Button variant="secondary" size="sm" onClick={() => void openTab(MANAGE_PRODUCTS_LINK)}>
           Manage
-        </button>
+        </Button>
       )}
+      <Button variant="primary" size="sm" busy={syncing} disabled={!onSeller} onClick={onSync} title="Refresh from this page">
+        {!syncing && <RefreshIcon size={13} />}
+        Sync
+      </Button>
     </div>
   );
 }

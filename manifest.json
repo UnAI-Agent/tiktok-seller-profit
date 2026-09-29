@@ -1,30 +1,40 @@
 {
   "manifest_version": 3,
-  "name": "TikTok Seller Tool — Profit & SKU",
-  "version": "0.1.0",
+  "name": "MarginMark — Profit Calculator for TikTok Shop Sellers",
+  "short_name": "MarginMark",
+  "version": "1.4.0",
+  "minimum_chrome_version": "137",
   "description": "Real-time profit margins for TikTok Shop sellers. See hidden fees, break-even prices, margin tone.",
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   },
-  "permissions": ["storage", "alarms", "activeTab", "scripting"],
+  "permissions": ["storage", "alarms", "scripting"],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+  },
   "host_permissions": [
     "https://seller-us.tiktok.com/*",
+    "https://seller.us.tiktok.com/*",
     "https://seller.tiktokglobalshop.com/*",
     "https://seller-us.tiktokglobalshop.com/*",
-    "https://*.tiktokshop.com/*",
     "http://127.0.0.1:8765/*",
     "http://127.0.0.1:8000/*",
     "http://localhost:8000/*"
   ],
+  "externally_connectable": {
+    "matches": [
+      "http://127.0.0.1:8000/*",
+      "http://localhost:8000/*"
+    ]
+  },
   "background": {
     "service_worker": "src/background/serviceWorker.ts",
     "type": "module"
   },
   "action": {
-    "default_popup": "index.html",
-    "default_title": "TikTok Seller Tool",
+    "default_title": "MarginMark",
     "default_icon": {
       "16": "icons/icon16.png",
       "48": "icons/icon48.png",
@@ -35,12 +45,31 @@
     {
       "matches": [
         "https://seller-us.tiktok.com/*",
+        "https://seller.us.tiktok.com/*",
         "https://seller.tiktokglobalshop.com/*",
         "https://seller-us.tiktokglobalshop.com/*",
         "http://127.0.0.1:8765/*"
       ],
       "js": ["src/content/index.ts"],
       "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "http://127.0.0.1:8000/*",
+        "http://localhost:8000/*"
+      ],
+      "js": ["src/content/oauthDone.ts"],
+      "run_at": "document_start"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["oauth-finish.html"],
+      "matches": [
+        "http://127.0.0.1:8000/*",
+        "http://localhost:8000/*"
+      ],
+      "use_dynamic_url": true
     }
   ]
 }

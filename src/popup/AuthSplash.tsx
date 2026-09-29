@@ -1,3 +1,6 @@
+import { EXTENSION_SHORT_NAME } from "../config";
+import MarkLogo from "../content/components/MarkLogo";
+
 type AuthSplashProps = {
   onLogIn: () => void;
   onSignUp: () => void;
@@ -7,7 +10,7 @@ const STEPS = [
   {
     n: "1",
     title: "Live overlay",
-    body: "See fees, COGS, shipping, and net margin on Seller Center.",
+    body: "See what you keep per sale, including fees and creator commission.",
   },
   {
     n: "2",
@@ -17,7 +20,7 @@ const STEPS = [
   {
     n: "3",
     title: "Free or Pro",
-    body: "10 SKUs free. Pro unlocks unlimited SKUs, creators, and price compare.",
+    body: "See profit on every product, free. Pro adds max safe commission, ad limits, and unlimited product costs.",
   },
 ] as const;
 
@@ -27,12 +30,12 @@ export default function AuthSplash({ onLogIn, onSignUp }: AuthSplashProps) {
       <div className="mb-4 flex flex-col items-center text-center">
         <div className="relative mb-4">
           <div className="absolute -inset-3 rounded-full bg-gradient-to-br from-tiktok/20 to-rose-200/40 blur-md" />
-          <div className="relative flex h-14 w-14 items-center justify-center rounded-2xl bg-tiktok text-lg font-bold text-white shadow-lg">
-            TT
+          <div className="relative shadow-lg">
+            <MarkLogo size={56} />
           </div>
         </div>
         <h2 className="text-lg font-semibold text-slate-900">
-          TikTok Seller Tool
+          {EXTENSION_SHORT_NAME}
         </h2>
         <p className="mt-1 max-w-[280px] text-sm text-slate-600">
           Real-time profit for TikTok Shop — no need to open Settings first.

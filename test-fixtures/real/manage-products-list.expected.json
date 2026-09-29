@@ -1,0 +1,18 @@
+{
+  "page": "manage-products-list",
+  "url": "https://seller-us.tiktok.com/product/manage",
+  "rows": [
+    {
+      "productId": "1732672081725330342",
+      "title": "Ailun Screen Protector + Camera Lens Protector for iPhone 16 Pro Max",
+      "listPrice": 36,
+      "listPriceOriginal": 45,
+      "promoPrice": 36,
+      "stock": 0,
+      "status": "Live",
+      "unitsSold": null
+    }
+  ],
+  "importedCount": 1,
+  "totalRows": null
+}
