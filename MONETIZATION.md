@@ -1,31 +1,33 @@
 # Monetization, tax model, and support
 
+MarginMark by Plainsman Software. Support: `support@plainsmansoftware.com`. Privacy: `https://plainsmansoftware.com/marginmark/privacy`. Terms: `https://plainsmansoftware.com/marginmark/terms`.
+
 ## Profit & tax (extension-side)
 
-Net profit is **estimated**, not tax advice.
+Net profit is **estimated**, not tax advice. Creator commission is `price × commission % × creator share %`. Break-even is `(fixed costs + ads) / (1 − variable rate)`.
 
 | Line | Meaning |
 |------|---------|
-| **Gross** | List price × units |
-| **Platform / payment** | TikTok + card fees (% + $0.30/order) |
-| **COGS** | Product cost per unit |
-| **Ship out** | Your label cost per unit (Settings → Ship out / unit) |
-| **Ads** | Ad spend allocated per unit |
-| **Refunds** | % of gross assumed refunded |
-| **Sales tax (est.)** | % of gross (Settings → Est. sales tax %) — use **0** if price is tax-inclusive |
-| **Packaging** | Boxes/labels per unit |
+| **You keep / sale** | Blended net after fees, COGS, shipping, packaging, ads, refunds, and creator commission |
+| **Creator commission** | Commission % on the share of sales that go through creators |
+| **Platform / payment** | Fee preset. Payment is $0 unless a statement shows a separate processing line |
+| **COGS** | Per product when entered, otherwise the Settings default |
 
 Formula lives in `src/lib/profit.ts` → `computeProfit()`.
 
-## Free vs Pro
+## Free, Pro, and Diamond
 
-| | Free | Pro ($9.99/mo or $99/yr) |
-|---|------|----------------|
-| SKUs stored locally | 10 max | Unlimited |
-| Creator dashboard | No | Yes (Pro tab) |
-| Cloud sync | No | Roadmap |
+| | Free | Pro ($14.99/mo or $120/yr) | Diamond ($39/mo or $349/yr) |
+|---|------|----------------|-----|
+| Per-unit overlay, commission included | Yes | Yes | Yes |
+| Product checks | 5/day | Unlimited | Unlimited |
+| Products with your own COGS | 5 | Unlimited | Unlimited |
+| AI review insight | Blurred teaser | 300/month | 1,000/month |
+| Trending | Top 3 teaser | Top 10 | Full list, risers, competition |
 
-**Pricing:** $9.99/mo or $99/yr Pro (Stripe Price IDs on backend).
+Diamond checkout stays off until `diamondEnabled` is turned on in signed remote config. Pro has a 7-day trial. Founder coupons are Stripe coupons with `max_redemptions`.
+
+**Pricing:** display prices are in `src/tiers.json`. Stripe Price IDs stay in backend secrets.
 
 **Source of truth:** backend SQLite `subscriptions` table per `user_id` + `service=tiktok-seller-tool`.
 
@@ -39,11 +41,10 @@ Extension caches tier in `chrome.storage.local.subscription` after sign-in (`/au
 4. Stripe Checkout opens; webhook sets `subscriptions.status = active`.
 5. User reopens popup; `is_pro` unlocks unlimited SKUs.
 
-Manage/cancel: add Stripe Customer Portal (backend `/stripe/portal`) — wire in UI when needed.
+Manage/cancel: Settings opens the Stripe Customer Portal through `/billing/portal`.
 
-## Support tickets
+## Support
 
-1. **Preferred:** Settings → Support → **Submit support ticket** → `POST /support/ticket` (stored in `support_tickets`).
-2. **Fallback:** opens `mailto:` if API is down.
+Settings → Support opens a `mailto:` draft. Support message content does not pass through the MarginMark API.
 
 Replace `SUPPORT_EMAIL` in `src/config.ts` with your real address.

@@ -1,3 +1,5 @@
+import { EXTENSION_SHORT_NAME } from "../config";
+import MarkLogo from "../content/components/MarkLogo";
 import { emailInitials } from "../lib/emailInitials";
 
 type PopupHeaderProps = {
@@ -62,7 +64,7 @@ export default function PopupHeader({
   userEmail,
   showBack,
   onBack,
-  title = "TikTok Seller Tool",
+  title = EXTENSION_SHORT_NAME,
   minimal = false,
 }: PopupHeaderProps) {
   if (minimal) {
@@ -90,10 +92,12 @@ export default function PopupHeader({
         >
           ←
         </button>
-      ) : (
+      ) : isLoggedIn && userEmail ? (
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-tiktok text-xs font-bold text-white">
-          {isLoggedIn && userEmail ? emailInitials(userEmail) : "TT"}
+          {emailInitials(userEmail)}
         </div>
+      ) : (
+        <MarkLogo size={36} />
       )}
 
       <div className="min-w-0 flex-1">

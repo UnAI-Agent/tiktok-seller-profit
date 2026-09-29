@@ -1,4 +1,4 @@
-import { SELECTORS } from "./domSelectors";
+import { SELECTORS, withRemote } from "./domSelectors";
 import { extractUnitsSoldFromText } from "./extractUnitsSold";
 import {
   findByAriaLabel,
@@ -12,8 +12,12 @@ export type ScrapeStatus = "complete" | "partial" | "manual";
 
 export type ScrapedProduct = {
   skuId: string;
+  skuIds?: string[];
   title: string;
   listPrice: number;
+  /** Buyer price after a discount or promotion. Retail stays in listPrice. */
+  promoPrice?: number | null;
+  listPriceOriginal?: number | null;
   unitsSold: number;
   scrapeStatus: ScrapeStatus;
   /** @deprecated use scrapeStatus === 'complete' */
@@ -22,18 +26,64 @@ export type ScrapedProduct = {
     hasTitle: boolean;
     hasPriceField: boolean;
     onProductEditor: boolean;
+    /** The document is an error page, not a product. */
+    pageMissing?: boolean;
   };
 };
 
+/** A short 404 body. A real Seller Center page is much longer than this. */
+export function isMissingPage(doc: Document): boolean {
+  const title = doc.title.replace(/\s+/g, " ").trim().toLowerCase();
+  if (title === "404" || title.startsWith("404 ") || title.startsWith("404|")) return true;
+  const text = (doc.body?.innerText ?? doc.body?.textContent ?? "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+  if (text.length > 800) return false;
+  return (
+    /\b404\b/.test(text) &&
+    /not found|could not be found|does not exist|doesn't exist/.test(text)
+  );
+}
+
 const PRODUCT_NAME = /^product\s*name\*?$/i;
 const RETAIL_PRICE =
-  /^(retail|sale|list|unit)?\s*price\*?$|^price\s*\(/i;
+  /^\*?\s*(retail|sale|list|unit)?\s*price\*?$|^price\s*\(/i;
 const UNITS_SOLD = /units?\s*sold|total\s*sales|items?\s*sold|sold\s*quantity/i;
 
 export function parseMoney(raw: string): number {
   const cleaned = raw.replace(/[^0-9.-]/g, "");
   const n = Number.parseFloat(cleaned);
   return Number.isFinite(n) ? n : 0;
+}
+
+function headerText(el: Element): string {
+  return (el.textContent ?? "").replace(/\s+/g, " ").trim();
+}
+
+function tableCell(doc: Document, header: RegExp): string {
+  const headers = [...doc.querySelectorAll("th")];
+  const index = headers.findIndex((th) => header.test(headerText(th).replace(/^\*\s*/, "")));
+  if (index < 0) return "";
+  const cell = doc.querySelector("tbody tr")?.querySelectorAll("td")[index];
+  return headerText(cell ?? doc.createElement("td"));
+}
+
+function discountFraction(raw: string): number | null {
+  const match = raw.match(/(\d+(?:\.\d+)?)\s*%/);
+  if (!match) return null;
+  const pct = Number(match[1]);
+  if (!Number.isFinite(pct) || pct <= 0 || pct >= 100) return null;
+  return pct / 100;
+}
+
+export function sellingPrice(product: {
+  listPrice: number;
+  promoPrice?: number | null;
+}): number {
+  return product.promoPrice != null && product.promoPrice > 0
+    ? product.promoPrice
+    : product.listPrice;
 }
 
 function firstText(
@@ -66,8 +116,27 @@ function findPriceByNearbyText(doc: Document): FormControl | null {
   return null;
 }
 
+function findRetailPriceInTable(doc: Document): FormControl | null {
+  const headers = [...doc.querySelectorAll("th")];
+  const index = headers.findIndex((th) =>
+    /^\*?\s*retail\s*price\*?$/i.test((th.textContent ?? "").replace(/\s+/g, " ").trim()),
+  );
+  if (index < 0) return null;
+  const cell = doc.querySelector("tbody tr")?.querySelectorAll("td")[index];
+  const input = cell?.querySelector("input");
+  return input instanceof HTMLInputElement ? input : null;
+}
+
+function findDisplayedProductTitle(doc: Document): string | null {
+  const named = doc.querySelector("[class*='productName']");
+  const text = named?.textContent?.replace(/\s+/g, " ").trim() ?? "";
+  if (text.length >= 8 && text.length <= 200) return text;
+  return null;
+}
+
 function findPriceControl(doc: Document): FormControl | null {
   return (
+    findRetailPriceInTable(doc) ??
     findControlByLabel(RETAIL_PRICE, doc) ??
     findByAriaLabel(/price/i, doc) ??
     findControlByLabel(/^your\s*price/i, doc) ??
@@ -102,15 +171,34 @@ export function parseProductFromDocument(
   doc: Document,
   href: string,
 ): ScrapedProduct {
+  if (isMissingPage(doc)) {
+    return {
+      skuId: "",
+      title: "Untitled product",
+      listPrice: 0,
+      unitsSold: 0,
+      scrapeStatus: "manual",
+      scrapeComplete: false,
+      hints: {
+        hasTitle: false,
+        hasPriceField: false,
+        onProductEditor: false,
+        pageMissing: true,
+      },
+    };
+  }
+
   const onProductEditor = isProductEditorPage(doc, href);
 
   const titleControl = findTitleControl(doc);
   const titleFromField = readControl(titleControl);
-  const titleFromHeader = readPageHeaderTitle(doc);
-  const titleFromSelectors = firstText(SELECTORS.productTitle, doc);
+  const onList = /product\/manage|manage-product|\/product\/list/.test(href);
+  const titleFromHeader = onList ? null : readPageHeaderTitle(doc);
+  const titleFromSelectors = firstText(withRemote("productTitle", SELECTORS.productTitle), doc);
   const title =
     titleFromField ||
     titleFromHeader ||
+    findDisplayedProductTitle(doc) ||
     titleFromSelectors ||
     "Untitled product";
 
@@ -125,6 +213,21 @@ export function parseProductFromDocument(
     }
   }
   const listPrice = parseMoney(priceFromField || priceFromSelectors || "0");
+  const promoLabeled = parseMoney(
+    (doc.body?.innerText ?? "").match(
+      /(?:Promotion price|Promo price)\s*:?\s*\$?\s*(\d+(?:\.\d{1,2})?)/i,
+    )?.[1] ?? "",
+  );
+  const discount = discountFraction(tableCell(doc, /^discount$/i));
+  let promoPrice: number | null = null;
+  let listPriceOriginal: number | null = null;
+  if (promoLabeled > 0) {
+    promoPrice = promoLabeled;
+    listPriceOriginal = listPrice > 0 ? listPrice : null;
+  } else if (discount != null && listPrice > 0) {
+    promoPrice = Math.round(listPrice * (1 - discount) * 100) / 100;
+    listPriceOriginal = listPrice;
+  }
 
   const soldControl =
     findControlByLabel(UNITS_SOLD, doc) ??
@@ -132,7 +235,7 @@ export function parseProductFromDocument(
   const soldFromField = readControl(soldControl);
   const soldRaw =
     soldFromField ||
-    firstText(SELECTORS.unitsSold, doc) ||
+    firstText(withRemote("unitsSold", SELECTORS.unitsSold), doc) ||
     "";
   let unitsSold = Math.max(0, Math.floor(parseMoney(soldRaw)));
   if (unitsSold <= 0 && soldRaw) {
@@ -174,8 +277,11 @@ export function parseProductFromDocument(
 
   return {
     skuId,
+    skuIds: extractVariantSkuIds(doc.body?.innerText ?? doc.body?.textContent ?? "", skuId),
     title,
     listPrice,
+    promoPrice,
+    listPriceOriginal,
     unitsSold,
     scrapeStatus,
     scrapeComplete: listPrice > 0,
@@ -191,6 +297,23 @@ export function parseProductFromHtml(html: string, href: string): ScrapedProduct
 
 export function parseProductPage(): ScrapedProduct {
   return parseProductFromDocument(document, window.location.href);
+}
+
+const VARIANT_ID_RE = /(?:SKU\s*ID|Seller\s*SKU|Variant\s*ID)\s*[:#]?\s*([A-Za-z0-9_-]{4,64})/gi;
+
+/** Variant ids printed on the edit page. Statements sometimes use these instead of the product id. */
+export function extractVariantSkuIds(text: string, productId: string): string[] {
+  VARIANT_ID_RE.lastIndex = 0;
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  for (const match of text.matchAll(VARIANT_ID_RE)) {
+    const id = match[1];
+    if (!id || id === productId || seen.has(id)) continue;
+    seen.add(id);
+    if (ids.length >= 50) break;
+    ids.push(id);
+  }
+  return ids;
 }
 
 function hashString(value: string): string {

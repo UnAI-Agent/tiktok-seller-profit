@@ -1,0 +1,14 @@
+{
+  "title": "MarginMark",
+  "panels": [
+    { "type": "stat", "title": "MRR", "targets": [{ "rawSql": "SELECT mrr_usd, paying FROM v_mrr" }] },
+    { "type": "stat", "title": "Trials", "targets": [{ "rawSql": "SELECT trialing, ending_3d FROM v_trials" }] },
+    { "type": "barchart", "title": "Plans", "targets": [{ "rawSql": "SELECT plan, users FROM v_plan_counts" }] },
+    { "type": "table", "title": "Funnel 30d", "targets": [{ "rawSql": "SELECT event, users FROM v_funnel_30d" }] },
+    { "type": "timeseries", "title": "Scrape success", "targets": [{ "rawSql": "SELECT day, page_type, price_rate, n FROM v_scrape_success_daily" }] },
+    { "type": "table", "title": "Extension versions", "targets": [{ "rawSql": "SELECT version, events FROM v_ext_versions_7d" }] },
+    { "type": "timeseries", "title": "Signups", "targets": [{ "rawSql": "SELECT day, signups FROM v_daily_signups" }] },
+    { "type": "timeseries", "title": "AI spend", "targets": [{ "rawSql": "SELECT day, usd FROM v_ai_spend_daily" }] },
+    { "type": "table", "title": "Weekly trends", "targets": [{ "rawSql": "SELECT week, lookups FROM v_trends_weekly" }] }
+  ]
+}

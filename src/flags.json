@@ -1,0 +1,15 @@
+{
+  "overlay": { "enabled": true, "rolloutPct": 100 },
+  "productCheck": { "enabled": true, "rolloutPct": 100 },
+  "aiInsights": { "enabled": false, "rolloutPct": 0 },
+  "trendsTelemetry": { "enabled": false, "rolloutPct": 0 },
+  "trendsView": { "enabled": false, "rolloutPct": 0 },
+  "diamondEnabled": { "enabled": false, "rolloutPct": 0 },
+  "statementImport": { "enabled": true, "rolloutPct": 100 },
+  "bulkScan": { "enabled": false, "rolloutPct": 0 },
+  "promoGuard": { "enabled": true, "rolloutPct": 100 },
+  "whatIf": { "enabled": false, "rolloutPct": 0 },
+  "csvExport": { "enabled": false, "rolloutPct": 0 },
+  "creatorProfit": { "enabled": true, "rolloutPct": 100 },
+  "bulkCost": { "enabled": true, "rolloutPct": 100 }
+}

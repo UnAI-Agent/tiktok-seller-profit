@@ -1,13 +1,25 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import SkuDashboard from "../dashboard/SkuDashboard";
 import CreatorPerformance from "../dashboard/CreatorPerformance";
-import { fetchMe, getStoredToken, logout, trackEvent } from "../lib/apiClient";
+import { EXTENSION_SHORT_NAME } from "../config";
+import { fetchMe, fetchRemoteConfig, getStoredToken, logout, trackEvent, createCheckoutUrl } from "../lib/apiClient";
+import { acceptPublishedConfig, announcementFromVerified } from "../lib/remoteConfig";
 import { AUTH_EXPIRED_EVENT, isConnectionError } from "../lib/apiErrors";
-import { isSellerCenterUrl } from "../lib/sellerUrl";
+import { portfolioStats } from "../lib/diagnose";
+import { formatUsd } from "../lib/profit";
+import { isSellerCenterUrl, MANAGE_PRODUCTS_LINK } from "../lib/sellerUrl";
 import { sendMessage } from "../lib/messages";
 import { refreshSubscriptionCache } from "../lib/subscription";
 import { DEFAULT_SETTINGS, type Settings } from "../types/settings";
 import type { SkuRecord } from "../types/sku";
+import {
+  bumpPopupOpenCount,
+  dismissNudge,
+  loadUxFlags,
+  markWelcomeSeen,
+  NUDGE_AFTER_OPENS,
+  SHOW_CREATOR_DEMO,
+} from "../lib/uxFlags";
 import AuthSplash from "./AuthSplash";
 import AutoSyncBar from "./AutoSyncBar";
 import InactivePopup from "./InactivePopup";
@@ -15,7 +27,10 @@ import LoginScreen from "./LoginScreen";
 import PopupHeader from "./PopupHeader";
 import ProUpsell from "./ProUpsell";
 import SettingsPanel from "./SettingsPanel";
+import SoftNudge from "./SoftNudge";
 import SupportScreen from "./SupportScreen";
+import { UpgradeContext } from "../ui/upgrade";
+import WelcomeGuide from "./WelcomeGuide";
 
 type Tab = "summary" | "skus" | "settings" | "creators";
 type PopupScreen = "main" | "login" | "support";
@@ -32,6 +47,7 @@ export default function Popup() {
   const [screen, setScreen] = useState<PopupScreen>("main");
   const [loginMode, setLoginMode] = useState<"login" | "signup">("login");
   const [tab, setTab] = useState<Tab>("summary");
+  const [focusMissing, setFocusMissing] = useState(false);
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [skus, setSkus] = useState<SkuRecord[]>([]);
   const [tabUrl, setTabUrl] = useState("");
@@ -44,6 +60,11 @@ export default function Popup() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [connectionLost, setConnectionLost] = useState(false);
+  const [announcement, setAnnouncement] = useState<string | null>(null);
+  const [welcomeSeen, setWelcomeSeen] = useState(true);
+  const [showNudge, setShowNudge] = useState(false);
+  const [nudgeBusy, setNudgeBusy] = useState(false);
+  const [oauthError, setOauthError] = useState<string | null>(null);
 
   const refreshSkus = useCallback(async () => {
     const skusRes = await sendMessage({ type: "GET_SKUS" });
@@ -59,7 +80,7 @@ export default function Popup() {
       setUserEmail(me?.email ?? null);
       if (loggedIn) {
         const tier = await refreshSubscriptionCache();
-        setIsPro(tier === "pro");
+        setIsPro(tier === "pro" || tier === "diamond");
       } else {
         setIsPro(false);
       }
@@ -89,9 +110,27 @@ export default function Popup() {
       setSettings(settingsRes.settings);
     }
     setTabUrl(tabs[0]?.url ?? "");
-    await refreshAuth();
+    await sendMessage({ type: "SCAN_OAUTH" });
+    const loggedIn = await refreshAuth();
     setAuthChecked(true);
+    const storedErr = await chrome.storage.local.get("oauthError");
+    setOauthError(
+      !loggedIn && typeof storedErr.oauthError === "string"
+        ? storedErr.oauthError
+        : null,
+    );
+    const flags = await loadUxFlags();
+    setWelcomeSeen(flags.welcomeSeen);
+    if (loggedIn) {
+      const opens = await bumpPopupOpenCount();
+      setShowNudge(
+        flags.welcomeSeen && !flags.nudgeDismissed && opens >= NUDGE_AFTER_OPENS,
+      );
+    }
     await refreshSkus();
+    const remote = await fetchRemoteConfig();
+    const accepted = await acceptPublishedConfig(remote, null, Date.now());
+    setAnnouncement(announcementFromVerified(accepted));
   }, [refreshSkus, refreshAuth]);
 
   useEffect(() => {
@@ -161,9 +200,11 @@ export default function Popup() {
 
   const onSellerSite = isSellerCenterUrl(tabUrl);
   const showSplash = authChecked && !isLoggedIn && screen === "main";
+  const showWelcome = isLoggedIn && screen === "main" && !welcomeSeen;
   const showInactive =
     isLoggedIn &&
     screen === "main" &&
+    !showWelcome &&
     !onSellerSite &&
     !forceSettings &&
     tab !== "settings" &&
@@ -183,10 +224,19 @@ export default function Popup() {
       if (changes.skus && isLoggedIn) void refreshSkus();
       if (changes.subscription) {
         const next = changes.subscription.newValue as { tier?: string } | undefined;
-        setIsPro(next?.tier === "pro");
+        setIsPro(next?.tier === "pro" || next?.tier === "diamond");
       }
       if (changes.authToken) {
-        void refreshAuth();
+        void refreshAuth().then((logged) => {
+          if (logged) {
+            setScreen("main");
+            setOauthError(null);
+          }
+        });
+      }
+      if (changes.oauthError) {
+        const next = changes.oauthError.newValue;
+        setOauthError(typeof next === "string" ? next : null);
       }
     }
     chrome.storage.onChanged.addListener(onStorage);
@@ -238,6 +288,26 @@ export default function Popup() {
     if (loggedIn) setScreen("main");
   }
 
+  async function skipWelcome() {
+    await markWelcomeSeen();
+    setWelcomeSeen(true);
+  }
+
+  async function handleNudgeUpgrade() {
+    setNudgeBusy(true);
+    try {
+      const url = await createCheckoutUrl("monthly");
+      await chrome.tabs.create({ url });
+    } catch {
+      setNudgeBusy(false);
+    }
+  }
+
+  async function skipNudge() {
+    await dismissNudge();
+    setShowNudge(false);
+  }
+
   function openLogin(mode: "login" | "signup") {
     setLoginMode(mode);
     setScreen("login");
@@ -252,7 +322,7 @@ export default function Popup() {
           : "Log in"
       : screen === "support"
         ? "Support"
-        : "TikTok Seller Tool";
+        : EXTENSION_SHORT_NAME;
 
   if (!authChecked) {
     return (
@@ -264,6 +334,7 @@ export default function Popup() {
   }
 
   return (
+    <UpgradeContext.Provider value={() => void handleNudgeUpgrade()}>
     <div className="flex w-[380px] max-h-[600px] min-h-[420px] flex-col p-4 font-sans text-slate-900">
       <PopupHeader
         onClose={closePopup}
@@ -290,10 +361,31 @@ export default function Popup() {
         </p>
       )}
 
+      {oauthError && !isLoggedIn && (
+        <p className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-800">
+          Google sign-in did not reach the extension. {oauthError}
+        </p>
+      )}
+
+      {announcement && (
+        <p className="mt-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+          {announcement}
+        </p>
+      )}
+
       {showSplash && (
         <AuthSplash
           onLogIn={() => openLogin("login")}
           onSignUp={() => openLogin("signup")}
+        />
+      )}
+
+      {showWelcome && (
+        <WelcomeGuide
+          settings={settings}
+          worst={portfolioStats(skus, settings).worstCreatorLoss}
+          onSave={persistSettings}
+          onSkip={() => void skipWelcome()}
         />
       )}
 
@@ -308,7 +400,7 @@ export default function Popup() {
 
       {screen === "support" && isLoggedIn && (
         <div className="mt-3 flex flex-1 flex-col overflow-hidden">
-          <SupportScreen />
+          <SupportScreen onClose={goMain} />
         </div>
       )}
 
@@ -321,7 +413,7 @@ export default function Popup() {
         />
       )}
 
-      {screen === "main" && isLoggedIn && !showInactive && (
+      {screen === "main" && isLoggedIn && !showInactive && !showWelcome && (
         <>
           <AutoSyncBar
             tabUrl={tabUrl}
@@ -333,10 +425,10 @@ export default function Popup() {
           <nav className="mt-3 flex gap-1 text-xs">
             {(
               [
-                ["summary", "Summary"],
-                ["skus", "SKUs"],
+                ["summary", "Home"],
+                ["skus", "Products"],
                 ["settings", "Settings"],
-                ["creators", "Creators"],
+                ...(SHOW_CREATOR_DEMO ? [["creators", "Creators"] as const] : []),
               ] as const
             ).map(([id, label]) => (
               <button
@@ -360,17 +452,24 @@ export default function Popup() {
 
           <div className="mt-3 flex-1 overflow-auto">
             {tab === "summary" && (
-              <div className="space-y-3 text-sm">
-                <p className="text-slate-600">
-                  Overlay is {settings.overlayEnabled ? "on" : "off"} on Seller
-                  Center. Price, units, and SKUs update automatically — use − to
-                  dock the panel.
-                </p>
-                <ProUpsell isPro={isPro} featureLabel="Upgrade to Pro" />
-              </div>
+              <HomeSummary
+                skus={skus}
+                settings={settings}
+                isPro={isPro}
+                showNudge={showNudge}
+                nudgeBusy={nudgeBusy}
+                onUpgrade={() => void handleNudgeUpgrade()}
+                onDismiss={() => void skipNudge()}
+                onMissing={() => {
+                  setFocusMissing(true);
+                  setTab("skus");
+                }}
+              />
             )}
 
-            {tab === "skus" && <SkuDashboard skus={skus} isPro={isPro} />}
+            {tab === "skus" && (
+              <SkuDashboard skus={skus} isPro={isPro} settings={settings} focusMissing={focusMissing} />
+            )}
 
             {tab === "settings" && (
               <SettingsPanel
@@ -379,16 +478,77 @@ export default function Popup() {
                 onLogout={() => void handleLogout()}
                 userEmail={userEmail}
                 saveStatus={status}
+                onAccountChanged={() => void refreshAuth()}
               />
             )}
 
-            {tab === "creators" && <CreatorPerformance isPro={isPro} />}
+            {SHOW_CREATOR_DEMO && tab === "creators" && <CreatorPerformance isPro={isPro} />}
           </div>
         </>
       )}
 
       {status && screen === "main" && isLoggedIn && tab !== "settings" && (
         <p className="mt-2 text-center text-xs text-slate-400">{status}</p>
+      )}
+    </div>
+    </UpgradeContext.Provider>
+  );
+}
+
+function HomeSummary({
+  skus,
+  settings,
+  isPro,
+  showNudge,
+  nudgeBusy,
+  onUpgrade,
+  onDismiss,
+  onMissing,
+}: {
+  skus: SkuRecord[];
+  settings: Settings;
+  isPro: boolean;
+  showNudge: boolean;
+  nudgeBusy: boolean;
+  onUpgrade: () => void;
+  onDismiss: () => void;
+  onMissing: () => void;
+}) {
+  const stats = useMemo(() => portfolioStats(skus, settings), [skus, settings]);
+  const meter = stats.total === 0 ? 0 : Math.round((stats.realCosts / stats.total) * 100);
+  return (
+    <div className="space-y-3 text-sm">
+      <p className="text-2xl font-semibold tabular-nums text-slate-900">
+        {formatUsd(stats.leak)}
+      </p>
+      <p className="text-xs text-slate-600">
+        Estimated leak on recorded sales · {stats.losing} products losing money
+      </p>
+      <button type="button" className="w-full text-left" onClick={onMissing}>
+        <div className="mb-1 flex justify-between text-[11px] text-slate-600">
+          <span>
+            {stats.realCosts} / {stats.total} products have real costs
+          </span>
+          <span>{meter}%</span>
+        </div>
+        <div className="h-1.5 overflow-hidden rounded bg-slate-100">
+          <div className="h-full bg-slate-800" style={{ width: `${meter}%` }} />
+        </div>
+      </button>
+      <button
+        type="button"
+        className="w-full rounded-xl bg-slate-900 py-2.5 text-sm font-semibold text-white"
+        onClick={() => chrome.tabs.create({ url: MANAGE_PRODUCTS_LINK })}
+      >
+        Open Seller Center
+      </button>
+      {showNudge && !isPro ? (
+        <SoftNudge busy={nudgeBusy} onUpgrade={onUpgrade} onDismiss={onDismiss} />
+      ) : (
+        <ProUpsell
+          isPro={isPro}
+          featureLabel="Pro shows the max commission and ad cost that keep a product profitable"
+        />
       )}
     </div>
   );

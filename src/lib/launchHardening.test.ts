@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { parseErrorBody, parseRetryAfterMs } from "./apiErrors";
-import { canAddSku, skuCountLabel, skuLimitWarning } from "./skuLimit";
+import { errorTextFromJson, parseErrorBody, parseRetryAfterMs } from "./apiErrors";
+import { canAddSku, FREE_SKU_WARN_AT, skuCountLabel, skuLimitWarning } from "./skuLimit";
+import { FREE_SKU_LIMIT } from "../config";
 import { isValidSku, sanitizeSkuList } from "./skuValidate";
 import type { SkuRecord } from "../types/sku";
 
@@ -33,6 +34,17 @@ describe("parseErrorBody", () => {
   });
 });
 
+describe("errorTextFromJson", () => {
+  it("BUG_proxy_shows_detail_string_and_validation_list", () => {
+    expect(errorTextFromJson({ detail: "Verify your email to start your trial" }, 403)).toBe(
+      "Verify your email to start your trial",
+    );
+    expect(errorTextFromJson({ detail: [{ msg: "Field required" }] }, 422)).toBe("Field required");
+    expect(errorTextFromJson({ error: "old shape" }, 400)).toBe("old shape");
+    expect(errorTextFromJson(null, 500)).toBe("Request failed (500)");
+  });
+});
+
 describe("parseRetryAfterMs", () => {
   it("parses seconds", () => {
     expect(parseRetryAfterMs("5")).toBe(5000);
@@ -40,11 +52,11 @@ describe("parseRetryAfterMs", () => {
 });
 
 describe("sku limits", () => {
-  it("warns at 8 and blocks the 11th on free", () => {
-    expect(skuLimitWarning(8, false)).toMatch(/8\/10/);
-    expect(canAddSku(10, false, true)).toBe(false);
-    expect(canAddSku(10, true, true)).toBe(true);
-    expect(canAddSku(10, false, false)).toBe(true);
+  it("warns near the cap and blocks the next cost on free", () => {
+    expect(skuLimitWarning(FREE_SKU_WARN_AT, false)).toMatch(new RegExp(`${FREE_SKU_WARN_AT}/${FREE_SKU_LIMIT}`));
+    expect(canAddSku(FREE_SKU_LIMIT, false, true)).toBe(false);
+    expect(canAddSku(FREE_SKU_LIMIT, true, true)).toBe(true);
+    expect(canAddSku(FREE_SKU_LIMIT, false, false)).toBe(true);
     expect(skuCountLabel(3, true)).toMatch(/Unlimited/);
   });
 });

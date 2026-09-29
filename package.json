@@ -1,32 +1,39 @@
 {
   "name": "tiktok-seller-tool",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.4.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "node scripts/security-check.mjs && tsc -b && vite build",
+    "build:lle": "powershell -NoProfile -File scripts/build-lle.ps1",
+    "build:prod": "powershell -NoProfile -File scripts/build-prod.ps1",
+    "dev:up": "powershell -NoProfile -File scripts/dev-up.ps1 -Build",
     "test": "vitest run",
     "test:all": "vitest run",
     "mock:page": "npx --yes serve test-fixtures -p 8765",
     "preview": "vite preview"
   },
   "dependencies": {
+    "papaparse": "^5.7.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
     "@crxjs/vite-plugin": "^2.0.0-beta.28",
     "@types/chrome": "^0.0.287",
+    "@types/papaparse": "^5.5.2",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
+    "fast-check": "^4.10.2",
     "happy-dom": "^20.14.5",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.2",
     "vite": "^6.0.3",
-    "vitest": "^3.0.5"
+    "vitest": "^5.0.1"
   }
 }

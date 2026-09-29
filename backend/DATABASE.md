@@ -7,7 +7,7 @@
 | **Local dev** | `ChromExtentionProjects/backend/data/platform.db` (or `DB_PATH` in `.env`) | **SQLite** |
 | **Production (recommended)** | Managed **PostgreSQL** on Railway, Fly.io, Neon, or Supabase | Postgres |
 
-The FastAPI app lives in `backend/main.py`. On first run it creates tables: `users`, `subscriptions`, `usage`, `support_tickets`, `telemetry_events`, plus reply-extension tables.
+The FastAPI app lives in `backend/marginmark_app.py`. On first run it creates tables: `users`, `subscriptions`, `usage`, `support_tickets`, `telemetry_events`, plus reply-extension tables.
 
 **Important:** TikTok extension **SKUs and profit settings** are still in **Chrome `storage.local`** on the user’s machine. Only **auth, billing, support tickets, and telemetry** hit the backend unless you add cloud SKU sync later.
 
@@ -31,13 +31,14 @@ Authorization: Bearer <optional user JWT>
 }
 ```
 
-## Your second app (telemetry dashboard)
+## Owner ops console
 
-Use a **read-only API** with a secret key (not user JWTs):
+Open `GET /ops` and unlock with `X-Admin-Key` / `TELEMETRY_ADMIN_KEY`. Same APIs:
 
 ```http
 GET /admin/telemetry/events?service=tiktok-seller-tool&limit=500
 X-Admin-Key: <TELEMETRY_ADMIN_KEY>
+```
 
 GET /admin/telemetry/summary?service=tiktok-seller-tool&days=7
 X-Admin-Key: <TELEMETRY_ADMIN_KEY>
@@ -47,7 +48,7 @@ Point Metabase, Grafana, a small Next.js admin, or a Python script at these endp
 
 ## Recommended hosting stack
 
-1. **API:** Railway or Fly.io — deploy `backend/` (Dockerfile included). Set env vars from `.env.example`.
+1. **API:** Fly.io — `backend/fly.lle.toml` / `fly.prod.toml` (see `.cursor/docs/DEPLOY.md`). Set env vars from `.env.example`.
 2. **Database:** Add **PostgreSQL** plugin on Railway (or Neon serverless Postgres). Set `DATABASE_URL`.
 3. **Note:** If `DATABASE_URL` is set (Neon `neon link` → `.env`), the API uses **Postgres**; otherwise **SQLite** at `data/platform.db`.
 

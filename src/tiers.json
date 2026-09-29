@@ -1,0 +1,29 @@
+{
+  "free": {
+    "productChecksPerDay": 5,
+    "skuLimit": 5,
+    "skuLimitNote": "Costs on up to 5 products. Price-only rows are unlimited.",
+    "aiPerMonth": 0,
+    "trends": "teaser"
+  },
+  "pro": {
+    "monthlyUsd": 14.99,
+    "yearlyUsd": 120,
+    "trialDays": 7,
+    "founderYearlyUsd": 99,
+    "productChecksPerDay": null,
+    "skuLimit": null,
+    "aiPerMonth": 300,
+    "trends": "top10"
+  },
+  "diamond": {
+    "monthlyUsd": 39,
+    "yearlyUsd": 349,
+    "trialDays": 0,
+    "founderMonthlyUsd": 29,
+    "productChecksPerDay": null,
+    "skuLimit": null,
+    "aiPerMonth": 1000,
+    "trends": "full"
+  }
+}

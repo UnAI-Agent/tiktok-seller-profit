@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Privacy Policy — TikTok Seller Tool</title>
+    <title>Privacy Policy — MarginMark</title>
     <style>
       body { font-family: system-ui, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; color: #0f172a; line-height: 1.5; }
       h1 { font-size: 1.5rem; }
@@ -11,22 +11,32 @@
   </head>
   <body>
     <h1>Privacy Policy</h1>
-    <p>Last updated: 19 September 2026. This is a launch placeholder — replace with your legal counsel’s final policy before Chrome Web Store publication.</p>
+    <p>Last updated: 24 September 2026. This policy covers the MarginMark Chrome extension.</p>
     <h2>What we collect</h2>
     <ul>
       <li>Account email and password hash (password is never stored in the extension).</li>
       <li>Subscription status from Stripe (no full card numbers).</li>
-      <li>Optional support tickets you submit.</li>
-      <li>Product SKU records you sync, stored in the extension and, when signed in, on our API.</li>
+      <li>Privacy-safe usage event names and coarse counts. Telemetry excludes email, raw URLs, product titles, statement rows, and cost data.</li>
     </ul>
     <h2>What we do not collect</h2>
     <ul>
       <li>TikTok passwords or session cookies.</li>
       <li>Payment card PAN/CVC (handled by Stripe Checkout).</li>
+      <li>SKU records, product costs, imported statements, or seller financial data. Costs and profit results stay on the device.</li>
     </ul>
+    <h2>Optional trending</h2>
+    <p>If you turn it on, MarginMark sends anonymous public product activity: product id, price, approximate sold count, and rating. It does not include your account, costs, or profit. Aggregated trends (products checked by 5 or more sellers) may be shown in MarginMark and published on plainsmansoftware.com. Raw events are deleted after 90 days. Turning the toggle off stops sending immediately. Scrubbed error reports (version, surface, and a hash of the message) may be sent so outages can be fixed.</p>
     <h2>Storage</h2>
-    <p>Settings and SKUs live in <code>chrome.storage.local</code>. Auth uses a bearer token in extension storage. The backend stores accounts in a database you operate (SQLite in alpha, PostgreSQL in production).</p>
+    <p>Settings, SKU records, costs, and imported statements stay on your computer in Chrome extension storage. Auth uses a bearer token in extension storage. The backend stores account email, password hash, subscription status, and privacy-safe telemetry.</p>
+    <h2>Sign-in</h2>
+    <p>You can create an account with email or with Google, Facebook, or TikTok. Those providers receive the sign-in request. MarginMark stores the provider subject id and your email.</p>
+    <h2>Processors</h2>
+    <p>Stripe processes payments. Fly.io hosts the API. Neon hosts the database. Anthropic may summarize public review text when that feature is on. New Relic receives operational telemetry. Costs and profit stay in the extension.</p>
+    <h2>Retention and deletion</h2>
+    <p>Account data is kept while the account exists. Deleting an account cancels the Stripe subscription, deletes the Stripe customer, removes the user id from telemetry, and deletes support tickets older than 30 days. Anonymous trend events are deleted after 90 days. Settings → Delete my account does this. You can also email support@plainsmansoftware.com.</p>
+    <h2>Limited Use</h2>
+    <p>MarginMark's use of information received from Google APIs adheres to the Chrome Web Store User Data Policy, including the Limited Use requirements.</p>
     <h2>Contact</h2>
-    <p>Replace this with your support email before launch.</p>
+    <p>Contact <a href="mailto:support@plainsmansoftware.com">support@plainsmansoftware.com</a>. MarginMark by Plainsman Software.</p>
   </body>
 </html>

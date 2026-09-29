@@ -1,4 +1,4 @@
-export type SubscriptionTier = "free" | "pro";
+export type SubscriptionTier = "free" | "pro" | "diamond";
 
 export type StoredSubscription = {
   tier: SubscriptionTier;
