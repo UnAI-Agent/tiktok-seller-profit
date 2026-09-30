@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { allowedApiCall, isRuntimeMessage } from "./messages";
 
 describe("API_CALL proxy", () => {
-  it("allows checkout and blocks other paths", () => {
+  it("allows checkout and blocks other paths @F-MSG", () => {
     expect(isRuntimeMessage({ type: "LOGOUT" })).toBe(true);
     expect(allowedApiCall("POST", "/billing/checkout")).toBe(true);
     expect(allowedApiCall("POST", "/auth/profile")).toBe(true);

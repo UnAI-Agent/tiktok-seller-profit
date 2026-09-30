@@ -72,6 +72,13 @@ export function checkProdBuild({ manifest, bundleText, lastPublished }) {
   if (!versionGreater(manifest.version, lastPublished)) {
     errors.push(`version ${manifest.version} is not newer than ${lastPublished}`);
   }
+  const compact = String(bundleText).replace(/\s+/g, "");
+  const openLiteral = /attachShadow\(\{mode:"open"/.test(compact);
+  const binding = /attachShadow\(\{mode:([A-Za-z_$][\w$]*)\}/.exec(compact);
+  const openBinding = binding ? compact.includes(`${binding[1]}="open"`) : false;
+  if (openLiteral || openBinding) {
+    errors.push("test build: overlay shadow root is open (built with VITE_E2E=1)");
+  }
   return errors;
 }
 

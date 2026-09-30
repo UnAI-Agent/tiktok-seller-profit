@@ -140,6 +140,81 @@ class LaunchTests(unittest.TestCase):
         me = self.client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})
         self.assertEqual(me.status_code, 401)
 
+    def _verify(self, email: str) -> None:
+        conn = db.get_db()
+        conn.execute(
+            "UPDATE users SET email_verified_at=? WHERE email=?",
+            ("2026-01-01T00:00:00+00:00", email),
+        )
+        conn.commit()
+        conn.close()
+
+    def test_checkout_unconfigured_returns_503(self):
+        """@F-BILL-503 Missing STRIPE_SECRET_KEY is a friendly 503, not a 500."""
+        email = "unconfigured-bill@example.com"
+        registered = self._register(email)
+        self.assertEqual(registered.status_code, 200, registered.text)
+        self._verify(email)
+        token = registered.json()["access_token"]
+        response = self.client.post(
+            "/billing/checkout",
+            headers={"Authorization": f"Bearer {token}", "Fly-Client-IP": "203.0.113.61"},
+            json={"billing_interval": "monthly"},
+        )
+        self.assertEqual(response.status_code, 503, response.text)
+        self.assertEqual(response.json()["error"], "Billing is not configured. Nothing was charged.")
+
+    def test_checkout_stripe_error_returns_502(self):
+        """@F-BILL-502 A StripeError during checkout must not become a 500."""
+        email = "stripe-err-bill@example.com"
+        registered = self._register(email)
+        self.assertEqual(registered.status_code, 200, registered.text)
+        self._verify(email)
+        token = registered.json()["access_token"]
+        with patch.object(marginmark_app, "STRIPE_SECRET_KEY", "sk_test_x"), patch.object(
+            marginmark_app.stripe.Customer,
+            "create",
+            side_effect=marginmark_app.stripe.error.StripeError("stripe down"),
+        ):
+            response = self.client.post(
+                "/billing/checkout",
+                headers={"Authorization": f"Bearer {token}", "Fly-Client-IP": "203.0.113.62"},
+                json={"billing_interval": "monthly"},
+            )
+        self.assertEqual(response.status_code, 502, response.text)
+        self.assertEqual(response.json()["error"], "Checkout could not start. Nothing was charged.")
+
+    def test_portal_unconfigured_and_stripe_error(self):
+        """@F-BILL-503 @F-BILL-502 Portal uses the same billing error mapping."""
+        email = "portal-bill@example.com"
+        registered = self._register(email)
+        self.assertEqual(registered.status_code, 200, registered.text)
+        token = registered.json()["access_token"]
+        conn = db.get_db()
+        conn.execute(
+            "UPDATE users SET stripe_customer_id=? WHERE email=?",
+            ("cus_test_portal", email),
+        )
+        conn.commit()
+        conn.close()
+        missing = self.client.post(
+            "/billing/portal",
+            headers={"Authorization": f"Bearer {token}", "Fly-Client-IP": "203.0.113.63"},
+        )
+        self.assertEqual(missing.status_code, 503, missing.text)
+        self.assertEqual(missing.json()["error"], "Billing is not configured. Nothing was charged.")
+        with patch.object(marginmark_app, "STRIPE_SECRET_KEY", "sk_test_x"), patch.object(
+            marginmark_app.stripe.billing_portal.Session,
+            "create",
+            side_effect=marginmark_app.stripe.error.StripeError("portal down"),
+        ):
+            failed = self.client.post(
+                "/billing/portal",
+                headers={"Authorization": f"Bearer {token}", "Fly-Client-IP": "203.0.113.64"},
+            )
+        self.assertEqual(failed.status_code, 502, failed.text)
+        self.assertEqual(failed.json()["error"], "Checkout could not start. Nothing was charged.")
+
     def test_L2_checkout_requires_verified_email(self):
         registered = self._register("pay@example.com")
         token = registered.json()["access_token"]

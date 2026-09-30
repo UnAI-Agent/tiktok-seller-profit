@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Settings } from "../../types/settings";
 import {
   computeProfit,
+  formatSignedUsd,
+  formatUsd,
   marginTone,
   priceGuard,
   type ProfitInput,
@@ -16,7 +18,7 @@ import {
 } from "../scraper/detectPageType";
 import { parseProductListPage } from "../scraper/parseProductListPage";
 import { ApiError, CONNECTION_LOST, fetchMe, logout, trackEvent } from "../../lib/apiClient";
-import { LLE_TEST_BANNER } from "../../config";
+import { FREE_SKU_LIMIT, LLE_TEST_BANNER } from "../../config";
 import { extensionVersion } from "../../lib/reportProblem";
 import { HelpPanel, type HelpTopic } from "./FieldHelp";
 import { isPaidTier, readTier, tierFromProfile } from "../../lib/subscription";
@@ -50,7 +52,7 @@ import ProLock from "../../ui/ProLock";
 import { UpgradeContext } from "../../ui/upgrade";
 import { Alert, Button, cx } from "../../ui/primitives";
 import { ChevronLeftIcon, HelpIcon, BoxIcon, ChartIcon, SettingsIcon } from "../../ui/icons";
-import { formatSignedUsd, formatUsd } from "../../lib/profit";
+import { flagEnabled } from "../activeConfig";
 import { TONE, toneForNet } from "../../ui/tone";
 
 type OverlayNav = "overview" | "products" | "settings";
@@ -249,7 +251,7 @@ export default function ProfitOverlay({
         if (cancel) return;
         setConnectionLost(err instanceof ApiError && err.message === CONNECTION_LOST);
         const cached = await readTier();
-        if (!cancel && isPaidTier(cached)) setTier(cached);
+        if (!cancel && cached) setTier(cached);
       }
     })();
     return () => {
@@ -288,7 +290,9 @@ export default function ProfitOverlay({
       const keys = message.keys ?? [];
       if (keys.includes("skus")) void refreshSkus();
       if (keys.includes("subscription") || keys.includes("proJustUnlocked")) {
-        void readTier().then((next) => setTier(next));
+        void readTier().then((next) => {
+          if (next) setTier(next);
+        });
       }
     }
     chrome.runtime.onMessage.addListener(onPush);
@@ -319,9 +323,27 @@ export default function ProfitOverlay({
       if (timer) clearTimeout(timer);
       timer = setTimeout(resync, 250);
     }
-    document.addEventListener("input", debounced, true);
-    document.addEventListener("change", debounced, true);
-    const interval = setInterval(resync, 2000);
+    const onPageEdit = (event: Event) => {
+      // Typing in the panel must not re-parse the page. That resync replaces the field mid-keystroke.
+      const inside = event.composedPath().some((node) => node instanceof HTMLElement && node.id === "tiktok-seller-tool-root");
+      if (!inside) debounced();
+    };
+    document.addEventListener("input", onPageEdit, true);
+    document.addEventListener("change", onPageEdit, true);
+    // Named timer: overlay resync (2000ms). Also asks the worker for the plan
+    // so a webhook can unlock Pro on the open panel without a reload.
+    const interval = setInterval(() => {
+      resync();
+      void sendMessage({ type: "AUTH_STATUS" }).then((status) => {
+        if (!status?.ok) {
+          if (status?.error === "Extension reloaded. Refresh this tab.") {
+            setBanner({ ok: false, message: status.error });
+          }
+          return;
+        }
+        if (status.tier === "free" || status.tier === "pro" || status.tier === "diamond") setTier(status.tier);
+      });
+    }, 2000);
     const failTimer = setTimeout(() => {
       setProduct((current) => {
         const empty =
@@ -334,8 +356,8 @@ export default function ProfitOverlay({
     }, 8000);
     return () => {
       if (timer) clearTimeout(timer);
-      document.removeEventListener("input", debounced, true);
-      document.removeEventListener("change", debounced, true);
+      document.removeEventListener("input", onPageEdit, true);
+      document.removeEventListener("change", onPageEdit, true);
       clearInterval(interval);
       clearTimeout(failTimer);
     };
@@ -418,7 +440,8 @@ export default function ProfitOverlay({
       affiliateSharePct: actualFees?.affiliateSharePct ?? settings.affiliateSharePct,
       samplesSent,
       sampleUnitCost,
-      includeRefundAdminFee: true,
+      // Refund admin is not in the answer key until a settlement states it.
+      includeRefundAdminFee: false,
       unrecoveredShipPerUnit: settings.shippingPassedToBuyer ? draft.shippingOut : 0,
     }),
     [listPrice, unitsSold, draft, shippingInCost, settings, actualFees, samplesSent, sampleUnitCost],
@@ -566,7 +589,11 @@ export default function ProfitOverlay({
       if (res.skipped > 0 && !res.saved) {
         setSyncMsg("Couldn't save some products. The data looked invalid.");
       } else if (res.found > 0) {
-        setSyncMsg(res.saved ? `Imported ${res.saved} from this page.` : `Found ${res.found}. Already up to date.`);
+        setSyncMsg(
+          res.saved
+            ? `Imported ${res.saved} from this page.${!isPro && res.saved > FREE_SKU_LIMIT ? " Price-only rows are unlimited." : ""}`
+            : `Found ${res.found}. Already up to date.`,
+        );
       } else {
         setSyncMsg("Nothing to import here. Open Manage products or a listing.");
       }
@@ -666,7 +693,9 @@ export default function ProfitOverlay({
               void handleLogout();
             }}
             onAccountChanged={() => {
-              void readTier().then((next) => setTier(next));
+              void readTier().then((next) => {
+                if (next) setTier(next);
+              });
               void fetchMe()
                 .then((me) => setUserEmail(me?.email ?? null))
                 .catch(() => undefined);
@@ -693,7 +722,11 @@ export default function ProfitOverlay({
               <PlanPicker
                 placement="plans"
                 onNeedVerify={() => setView("account")}
-                onUnlocked={() => void readTier().then((next) => setTier(next))}
+                onUnlocked={() =>
+                  void readTier().then((next) => {
+                    if (next) setTier(next);
+                  })
+                }
                 me={undefined}
               />
             )}
@@ -899,20 +932,20 @@ export default function ProfitOverlay({
                       affiliatePct={input.affiliatePct ?? 0}
                       affiliateSharePct={input.affiliateSharePct ?? 0}
                     />
+                    {isPro && flagEnabled("whatIf", tier === "diamond" ? "diamond" : "pro") && (
+                      <WhatIfPanel
+                        key={`${listPrice}-${draft.affiliatePct}-${draft.adsPerUnit}`}
+                        base={input}
+                        targetMarginPct={settings.targetMarginPct}
+                        isPro
+                      />
+                    )}
                     {isPro && (
-                      <>
-                        <WhatIfPanel
-                          key={`${listPrice}-${draft.affiliatePct}-${draft.adsPerUnit}`}
-                          base={input}
-                          targetMarginPct={settings.targetMarginPct}
-                          isPro
-                        />
-                        <div className="mx-4">
-                          <Button variant="secondary" size="sm" onClick={() => void addSample()}>
-                            +1 free sample sent{samplesSent > 0 ? ` (${samplesSent})` : ""}
-                          </Button>
-                        </div>
-                      </>
+                      <div className="mx-4">
+                        <Button variant="secondary" size="sm" onClick={() => void addSample()}>
+                          +1 free sample sent{samplesSent > 0 ? ` (${samplesSent})` : ""}
+                        </Button>
+                      </div>
                     )}
                   </>
                 )}
@@ -969,7 +1002,9 @@ export default function ProfitOverlay({
                 saveStatus={saveStatus}
                 onOpenAccount={() => setView("account")}
                 onAccountChanged={() => {
-                  void readTier().then((next) => setTier(next));
+                  void readTier().then((next) => {
+                    if (next) setTier(next);
+                  });
                   void fetchMe()
                     .then((me) => setUserEmail(me?.email ?? null))
                     .catch(() => undefined);

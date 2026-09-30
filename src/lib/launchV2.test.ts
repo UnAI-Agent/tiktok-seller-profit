@@ -43,7 +43,7 @@ describe("L8 remote config", () => {
         version: "1.3.0",
         installId: "install-a",
       }).enabled,
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it("L8_remote_selector_override_used", () => {

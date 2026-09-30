@@ -516,30 +516,56 @@ def _set_sub(
     own = db is None
     if own:
         db = get_db()
-    cur = db.execute(
-        """
-        INSERT INTO subscriptions
-          (user_id, service, status, stripe_sub_id, past_due_since, tier)
-        VALUES (?,?,?,?,?,?)
-        ON CONFLICT(user_id, service) DO UPDATE SET
-          status=?,
-          stripe_sub_id=COALESCE(?, subscriptions.stripe_sub_id),
-          past_due_since=?,
-          tier=COALESCE(?, subscriptions.tier)
-        """,
-        (
-            uid,
-            SERVICE,
-            status,
-            stripe_sub_id,
-            past_due_since,
-            tier,
-            status,
-            stripe_sub_id,
-            past_due_since,
-            tier,
-        ),
-    )
+    # A new Stripe subscription must not inherit cancel fields from the previous one.
+    reset_live_fields = False
+    if stripe_sub_id:
+        prior = db.execute(
+            "SELECT stripe_sub_id FROM subscriptions WHERE user_id=? AND service=?",
+            (uid, SERVICE),
+        ).fetchone()
+        stored = prior["stripe_sub_id"] if prior else None
+        reset_live_fields = bool(stored) and str(stored) != str(stripe_sub_id)
+    if reset_live_fields:
+        cur = db.execute(
+            """
+            UPDATE subscriptions
+               SET status=?,
+                   stripe_sub_id=?,
+                   past_due_since=?,
+                   tier=COALESCE(?, tier),
+                   stripe_status=NULL,
+                   current_period_end=NULL,
+                   interval=NULL,
+                   amount_cents=NULL
+             WHERE user_id=? AND service=?
+            """,
+            (status, stripe_sub_id, past_due_since, tier, uid, SERVICE),
+        )
+    else:
+        cur = db.execute(
+            """
+            INSERT INTO subscriptions
+              (user_id, service, status, stripe_sub_id, past_due_since, tier)
+            VALUES (?,?,?,?,?,?)
+            ON CONFLICT(user_id, service) DO UPDATE SET
+              status=?,
+              stripe_sub_id=COALESCE(?, subscriptions.stripe_sub_id),
+              past_due_since=?,
+              tier=COALESCE(?, subscriptions.tier)
+            """,
+            (
+                uid,
+                SERVICE,
+                status,
+                stripe_sub_id,
+                past_due_since,
+                tier,
+                status,
+                stripe_sub_id,
+                past_due_since,
+                tier,
+            ),
+        )
     written = max(int(cur.rowcount or 0), 0)
     if own:
         db.commit()
@@ -1261,8 +1287,24 @@ def _return_base() -> str:
     return PUBLIC_BASE_URL or FRONTEND_URL
 
 
+_BILLING_OFF = "Billing is not configured. Nothing was charged."
+_BILLING_DOWN = "Checkout could not start. Nothing was charged."
+
+
+def _billing_json(status: int, message: str) -> JSONResponse:
+    return JSONResponse({"error": message}, status_code=status)
+
+
 @app.post("/billing/checkout")
 def create_checkout(req: CheckoutReq, user: dict[str, Any] = Depends(current_user)):
+    try:
+        return _create_checkout(req, user)
+    except stripe.error.StripeError as exc:
+        logger.warning("Checkout stripe error: %s", exc.__class__.__name__)
+        return _billing_json(502, _BILLING_DOWN)
+
+
+def _create_checkout(req: CheckoutReq, user: dict[str, Any]):
     db = get_db()
     sub = db.execute(
         "SELECT status, stripe_sub_id, promo_expires_at, past_due_since FROM subscriptions WHERE user_id=? AND service=?",
@@ -1274,6 +1316,8 @@ def create_checkout(req: CheckoutReq, user: dict[str, Any] = Depends(current_use
     cid = cid_row["stripe_customer_id"]
     if _sub_status(sub) == "active" and cid:
         db.close()
+        if not STRIPE_SECRET_KEY:
+            return _billing_json(503, _BILLING_OFF)
         portal_session = stripe.billing_portal.Session.create(
             customer=cid,
             return_url=f"{_return_base()}/billing/done?ok=1",
@@ -1282,9 +1326,14 @@ def create_checkout(req: CheckoutReq, user: dict[str, Any] = Depends(current_use
     if not user.get("email_verified_at"):
         db.close()
         raise HTTPException(403, VERIFY_REQUIRED)
+    if not STRIPE_SECRET_KEY:
+        db.close()
+        return _billing_json(503, _BILLING_OFF)
     if not cid:
+        db.close()
         customer = stripe.Customer.create(email=user["email"])
         cid = customer.id
+        db = get_db()
         db.execute("UPDATE users SET stripe_customer_id=? WHERE id=?", (cid, user["id"]))
         db.commit()
     used_row = db.execute("SELECT trial_used FROM users WHERE id=?", (user["id"],)).fetchone()
@@ -1308,21 +1357,17 @@ def create_checkout(req: CheckoutReq, user: dict[str, Any] = Depends(current_use
         raise HTTPException(400, "No Stripe price configured")
     allow_trial = req.plan == "pro" and trial_allowed(used, prior)
     extra = checkout_extra(SERVICE, trial_allowed=allow_trial)
-    try:
-        session = stripe.checkout.Session.create(
-            customer=cid,
-            client_reference_id=str(user["id"]),
-            line_items=[{"price": price_id, "quantity": 1}],
-            mode="subscription",
-            success_url=f"{_return_base()}/billing/done?ok=1&session_id={{CHECKOUT_SESSION_ID}}",
-            cancel_url=f"{_return_base()}/billing/done?ok=0",
-            metadata={"user_id": str(user["id"]), "service": SERVICE, "tier": req.plan, "price_id": price_id},
-            managed_payments={"enabled": False},
-            **extra,
-        )
-    except stripe.error.InvalidRequestError as exc:
-        logger.warning("Checkout session rejected: %s", exc.code or "invalid_request")
-        raise HTTPException(400, "Checkout could not start. Nothing was charged.") from exc
+    session = stripe.checkout.Session.create(
+        customer=cid,
+        client_reference_id=str(user["id"]),
+        line_items=[{"price": price_id, "quantity": 1}],
+        mode="subscription",
+        success_url=f"{_return_base()}/billing/done?ok=1&session_id={{CHECKOUT_SESSION_ID}}",
+        cancel_url=f"{_return_base()}/billing/done?ok=0",
+        metadata={"user_id": str(user["id"]), "service": SERVICE, "tier": req.plan, "price_id": price_id},
+        managed_payments={"enabled": False},
+        **extra,
+    )
     started = get_db()
     started.execute(
         "UPDATE users SET checkout_started_at=? WHERE id=?",
@@ -1343,10 +1388,16 @@ def billing_portal(user: dict[str, Any] = Depends(current_user)):
     db.close()
     if not row["stripe_customer_id"]:
         raise HTTPException(400, "No subscription found")
-    session = stripe.billing_portal.Session.create(
-        customer=row["stripe_customer_id"],
-        return_url=f"{_return_base()}/billing/done?ok=1",
-    )
+    if not STRIPE_SECRET_KEY:
+        return _billing_json(503, _BILLING_OFF)
+    try:
+        session = stripe.billing_portal.Session.create(
+            customer=row["stripe_customer_id"],
+            return_url=f"{_return_base()}/billing/done?ok=1",
+        )
+    except stripe.error.StripeError as exc:
+        logger.warning("Portal stripe error: %s", exc.__class__.__name__)
+        return _billing_json(502, _BILLING_DOWN)
     return {"url": session.url}
 
 
@@ -1430,6 +1481,24 @@ def invoice_subscription_id(obj: dict[str, Any]) -> Optional[str]:
     return None
 
 
+def _stripe_object_dict(remote: Any) -> Optional[dict[str, Any]]:
+    """Stripe 9 Subscription subclasses dict. Later majors do not."""
+    recursive = getattr(remote, "to_dict_recursive", None)
+    if callable(recursive):
+        converted = recursive()
+        if isinstance(converted, dict):
+            return converted
+    as_dict = getattr(remote, "to_dict", None)
+    if callable(as_dict):
+        converted = as_dict()
+        if isinstance(converted, dict):
+            return converted
+    try:
+        return dict(remote)
+    except (TypeError, ValueError):
+        return None
+
+
 def _retrieve_subscription(sub_id: str) -> Optional[dict[str, Any]]:
     if not sub_id or not STRIPE_SECRET_KEY:
         return None
@@ -1438,7 +1507,7 @@ def _retrieve_subscription(sub_id: str) -> Optional[dict[str, Any]]:
     except stripe.error.StripeError:
         logger.warning("webhook subscription retrieve failed sub=%s", sub_id)
         return None
-    return dict(remote) if isinstance(remote, dict) else None
+    return _stripe_object_dict(remote)
 
 
 def _stripe_row_canceled(db: Any, sub_id: str) -> bool:
@@ -1559,9 +1628,15 @@ async def webhook(request: Request):
                         tier = None
                     raw_sub = obj.get("subscription")
                     sub_id = raw_sub if isinstance(raw_sub, str) else None
-                    rows = _set_sub(int(uid), "active", sub_id, tier=tier, db=db)
-                    db.execute("UPDATE users SET trial_used=1 WHERE id=?", (int(uid),))
-                    resulting = "active"
+                    live = _retrieve_subscription(sub_id) if sub_id else None
+                    live_status = live.get("status") if isinstance(live, dict) else None
+                    if live_status in ("canceled", "incomplete_expired"):
+                        resulting = "skipped"
+                        rows = 0
+                    else:
+                        rows = _set_sub(int(uid), "active", sub_id, tier=tier, db=db)
+                        db.execute("UPDATE users SET trial_used=1 WHERE id=?", (int(uid),))
+                        resulting = "active"
             elif event_type in (
                 "customer.subscription.updated",
                 "customer.subscription.created",

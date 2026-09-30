@@ -4,27 +4,28 @@ on:
   push:
     branches: [main]
 jobs:
-  node:
+  everything:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-      - run: npm ci
-      - run: npx tsc --noEmit
-      - run: npm test
-  python:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - run: pip install -r backend/requirements.txt -r backend/requirements-dev.txt
-      - run: python -m pytest
-        working-directory: backend
+    - uses: actions/checkout@v4
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 20
+        cache: npm
+    - uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+    - run: npm ci
+    - run: npx playwright install --with-deps chromium
+    - run: pip install -r backend/requirements.txt -r backend/requirements-dev.txt
+    - run: npm run test:everything
+      env:
+        E2E_PYTHON: python3
+    - uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: qa-report
+        path: qa/report/
   secrets:
     runs-on: ubuntu-latest
     steps:

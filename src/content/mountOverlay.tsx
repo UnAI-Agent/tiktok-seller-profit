@@ -3,6 +3,9 @@ import { StrictMode } from "react";
 import ProfitOverlay from "./components/ProfitOverlay";
 import { detectPageType } from "./scraper/detectPageType";
 import { parseProductPage } from "./scraper/parseProductPage";
+import { setRemoteCss } from "./scraper/domSelectors";
+import { acceptPublishedConfig } from "../lib/remoteConfig";
+import { setActiveRemoteConfig } from "./activeConfig";
 import { extensionContextAlive, sendMessage } from "../lib/messages";
 import type { Settings } from "../types/settings";
 import {
@@ -13,6 +16,9 @@ import {
 import css from "../index.css?inline";
 
 const HOST_ID = "tiktok-seller-tool-root";
+
+/** Store builds keep the panel closed. Only `npm run build:e2e` (VITE_E2E=1) opens it for Playwright. */
+const SHADOW_MODE: ShadowRootMode = import.meta.env.VITE_E2E === "1" ? "open" : "closed";
 
 let reactRoot: Root | null = null;
 let hostEl: HTMLDivElement | null = null;
@@ -139,6 +145,7 @@ async function renderOverlay(settings: Settings) {
   }
 
   const collapsed = loggedIn && settings.overlayCollapsed && !authPanelForced;
+  await applyRemoteSelectors();
   const product = parseProductPage();
   const dragStored = await sendMessage({ type: "GET_LOCAL", keys: ["overlayDrag"] });
   const drag = (dragStored.ok ? dragStored.local?.overlayDrag : undefined) as
@@ -150,7 +157,7 @@ async function renderOverlay(settings: Settings) {
     hostEl = document.createElement("div");
     hostEl.id = HOST_ID;
     positionHost(hostEl, settings, collapsed, drag);
-    const shadow = hostEl.attachShadow({ mode: "closed" });
+    const shadow = hostEl.attachShadow({ mode: SHADOW_MODE });
     injectStyles(shadow);
     const mount = document.createElement("div");
     mount.style.pointerEvents = "auto";
@@ -164,7 +171,17 @@ async function renderOverlay(settings: Settings) {
   }
 
   bindDrag(hostEl);
-  if (!collapsed) nudgeOffSave(hostEl);
+  if (!collapsed) {
+    // The card has no size until React lays out. Nudge on that resize so a
+    // Save/Submit button under the finished panel is cleared.
+    nudgeOffSave(hostEl);
+    const watched = hostEl;
+    const observer = new ResizeObserver(() => {
+      nudgeOffSave(watched);
+      if (watched.getBoundingClientRect().height > 40) observer.disconnect();
+    });
+    observer.observe(watched);
+  }
 
   reactRoot?.render(
     <StrictMode>
@@ -200,6 +217,19 @@ export function unmountOverlay() {
   hostEl = null;
 }
 
+async function applyRemoteSelectors(): Promise<void> {
+  const res = await sendMessage({ type: "GET_LOCAL", keys: ["remoteConfigCache"] });
+  const raw = res.ok ? res.local?.remoteConfigCache : null;
+  const accepted = await acceptPublishedConfig(raw, null, Date.now());
+  setActiveRemoteConfig(accepted);
+  const fields = accepted?.selectors?.["product-edit"]?.fields ?? {};
+  const map: Record<string, string> = {};
+  for (const [field, spec] of Object.entries(fields)) {
+    if (spec.css && !spec.css.trim().toLowerCase().startsWith("javascript:")) map[field] = spec.css;
+  }
+  setRemoteCss(map);
+}
+
 export async function mountOverlayFromSettings() {
   const res = await sendMessage({ type: "GET_SETTINGS" });
   if (!res.ok || !res.settings) return;
@@ -222,6 +252,11 @@ export async function showInPagePanel() {
   authPanelForced = true;
   clearOverlayDismissForTab();
   await mountOverlayFromSettings();
+  return {
+    forced: authPanelForced,
+    dismissed: isOverlayDismissedForTab(),
+    host: Boolean(document.getElementById(HOST_ID)),
+  };
 }
 
 export function watchOverlaySettings() {
@@ -229,7 +264,7 @@ export function watchOverlaySettings() {
     if (!extensionContextAlive()) return;
     if (message?.type !== "STORAGE_PUSH") return;
     const keys = message.keys ?? [];
-    if (keys.includes("authToken") || keys.includes("settings")) {
+      if (keys.includes("authToken") || keys.includes("settings") || keys.includes("remoteConfigCache")) {
       void mountOverlayFromSettings();
     }
   });

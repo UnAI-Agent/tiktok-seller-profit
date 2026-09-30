@@ -1,4 +1,11 @@
 *.zip
+dist-e2e/
+dist-prod-check/
+qa/report/
+.e2e-live-profile/
+test-results/
+playwright-report/
+backend/.route-coverage.json
 
 # Logs
 logs
@@ -171,5 +178,8 @@ platform.db-journal
 # The product repo tracks README.md only.
 *.md
 !/README.md
+!/TESTING.md
+!/qa/FINDINGS.md
+!/qa/MANUAL_CHECKLIST.md
 .cursor/
 docs/claude/

@@ -10,7 +10,7 @@ import {
 } from "./profit";
 
 describe("computeProfit", () => {
-  it("matches hand-calculated fixture", () => {
+  it("matches hand-calculated fixture @F-PROFIT", () => {
     const r = computeProfit({
       listPrice: 10,
       unitsSold: 10,

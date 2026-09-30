@@ -52,6 +52,7 @@ const LOCAL_KEYS = new Set([
   "subscription",
   "statementMapping",
   "firstRun",
+  "remoteConfigCache",
 ]);
 
 export function allowedLocalKeys(keys: unknown): keys is string[] {

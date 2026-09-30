@@ -312,7 +312,11 @@ export function evaluateFlag(
     return { enabled: false, reason: UPDATE_BANNER, updateRequired: true };
   }
   const bundledOn = bundledFlags()[flag].enabled;
-  if (!bundledOn || !spec?.enabled) return { enabled: false, reason, statusUrl: spec?.statusUrl, updateRequired };
+  // A signed doc with enabled:true can turn a bundled-off flag on. enabled:false is still a kill switch.
+  if (!(spec?.enabled === true && !bundledOn) && (!bundledOn || !spec?.enabled)) {
+    return { enabled: false, reason, statusUrl: spec?.statusUrl, updateRequired };
+  }
+  if (!spec) return { enabled: false, reason, updateRequired };
   if (spec.minVersion && compareVersions(ctx.version, spec.minVersion) < 0) {
     return { enabled: false, reason: UPDATE_BANNER, statusUrl: spec.statusUrl, updateRequired: true };
   }

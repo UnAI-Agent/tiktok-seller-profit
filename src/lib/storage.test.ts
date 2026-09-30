@@ -144,6 +144,8 @@ describe("storage SKU cap", () => {
     const result = await syncSkus(incoming, "free");
     expect(result.saved).toBe(15);
     expect(result.skipped).toBe(0);
+    const again = await syncSkus(incoming, "free");
+    expect(again.saved).toBe(0);
   });
 
   it("L6_existing_users_migrate", async () => {

@@ -51,8 +51,13 @@ describe("PRO_overlay_reads_plan_without_storage_access", () => {
     expect(sendMessage).toHaveBeenCalledWith({ type: "GET_TIER" });
   });
 
-  it("readTier falls back to free when the extension was reloaded", async () => {
+  it("readTier returns null when the extension was reloaded @F-TIER-READ", async () => {
     sendMessage.mockResolvedValue({ ok: false, error: "Extension reloaded. Refresh this tab." });
+    expect(await readTier()).toBeNull();
+  });
+
+  it("readTier returns free when the cached plan is free @F-TIER-READ", async () => {
+    sendMessage.mockResolvedValue({ ok: true, loggedIn: true, tier: "free" });
     expect(await readTier()).toBe("free");
   });
 });

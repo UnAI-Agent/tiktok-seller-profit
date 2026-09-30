@@ -1,0 +1,1224 @@
+{
+  "features": [
+    {
+      "id": "F-OAUTH-FLOW-1",
+      "name": "OAuth 1",
+      "surfaces": [
+        "route:GET /auth/oauth/done",
+        "route:GET /auth/oauth/{provider}",
+        "route:GET /auth/oauth/{provider}/callback",
+        "route:POST /auth/oauth/exchange",
+        "route:GET /static/oauth-done.js",
+        "msg:CLAIM_OAUTH_TICKET",
+        "msg:OAUTH_FINISHED",
+        "msg:SCAN_OAUTH",
+        "msg:START_OAUTH",
+        "lib:src/lib/oauthCallback.ts"
+      ],
+      "tests": [
+        "@F-OAUTH-FLOW"
+      ]
+    },
+    {
+      "id": "F-OAUTH-FLOW-2",
+      "name": "OAuth 2",
+      "surfaces": [
+        "lib:src/content/oauthDone.ts"
+      ],
+      "tests": [
+        "@F-OAUTH-FLOW"
+      ]
+    },
+    {
+      "id": "F-BILL-LIFE",
+      "name": "Billing lifecycle",
+      "surfaces": [
+        "route:POST /billing/checkout",
+        "route:POST /billing/portal",
+        "route:GET /billing/done",
+        "route:POST /billing/promo",
+        "route:POST /billing/webhook",
+        "route:GET /admin/billing/stripe"
+      ],
+      "tests": [
+        "@F-BILL-LIFE"
+      ]
+    },
+    {
+      "id": "F-ADMIN-DB-1",
+      "name": "Admin and ops 1",
+      "surfaces": [
+        "route:GET /health",
+        "route:GET /config/remote",
+        "route:GET /static/ops.js",
+        "route:GET /ops",
+        "route:GET /admin/metrics/summary",
+        "route:GET /admin/overview",
+        "route:GET /admin/users",
+        "route:PATCH /admin/users/{user_id}",
+        "route:POST /admin/users/{user_id}/reset-password",
+        "route:POST /admin/users/{user_id}/delete"
+      ],
+      "tests": [
+        "@F-ADMIN-DB"
+      ]
+    },
+    {
+      "id": "F-ADMIN-DB-2",
+      "name": "Admin and ops 2",
+      "surfaces": [
+        "route:GET /admin/promos",
+        "route:POST /admin/promos",
+        "route:POST /admin/promos/{code}/toggle",
+        "route:PUT /admin/config",
+        "route:GET /admin/db/tables",
+        "route:GET /admin/db/rows",
+        "route:POST /admin/db/rows",
+        "route:PUT /admin/db/rows",
+        "route:POST /admin/db/rows/delete",
+        "route:GET /admin/telemetry/events"
+      ],
+      "tests": [
+        "@F-ADMIN-DB"
+      ]
+    },
+    {
+      "id": "F-ADMIN-DB-3",
+      "name": "Admin and ops 3",
+      "surfaces": [
+        "route:GET /admin/telemetry/summary",
+        "route:GET /admin/v1/config",
+        "route:PUT /admin/v1/config",
+        "route:GET /admin/v1/users",
+        "route:POST /admin/v1/users/{user_id}/tier-override",
+        "route:DELETE /admin/v1/users/{user_id}/tier-override",
+        "route:POST /admin/v1/users/{user_id}/reset-usage",
+        "route:POST /admin/v1/users/{user_id}/token-revoke",
+        "route:POST /admin/v1/users/{user_id}/note",
+        "route:GET /admin/v1/metrics/summary"
+      ],
+      "tests": [
+        "@F-ADMIN-DB"
+      ]
+    },
+    {
+      "id": "F-INSIGHT-SUMMARY",
+      "name": "Insights and trends",
+      "surfaces": [
+        "route:POST /insights/review-summary",
+        "route:POST /trends/events",
+        "route:GET /trends/teaser",
+        "route:GET /trends",
+        "route:GET /public/trends",
+        "lib:src/lib/trendsClient.ts",
+        "flag:aiInsights",
+        "flag:trendsTelemetry",
+        "flag:trendsView"
+      ],
+      "tests": [
+        "@F-INSIGHT-SUMMARY"
+      ]
+    },
+    {
+      "id": "F-TELEM-SCRUB-1",
+      "name": "Telemetry 1",
+      "surfaces": [
+        "route:POST /telemetry/event",
+        "route:POST /telemetry/error",
+        "route:POST /telemetry/parse-failure",
+        "telemetry:overlay.shown",
+        "telemetry:scrape.result",
+        "telemetry:cost.first_entered",
+        "telemetry:sku.limit_hit",
+        "telemetry:upgrade.clicked",
+        "telemetry:user.registered",
+        "telemetry:checkout.created"
+      ],
+      "tests": [
+        "@F-TELEM-SCRUB"
+      ]
+    },
+    {
+      "id": "F-TELEM-SCRUB-2",
+      "name": "Telemetry 2",
+      "surfaces": [
+        "telemetry:subscription.state_changed",
+        "telemetry:auth.login",
+        "telemetry:auth.register",
+        "telemetry:onboarding.step",
+        "telemetry:bulk_cost.imported",
+        "telemetry:statement.imported",
+        "telemetry:creator.imported",
+        "telemetry:promo_guard.shown",
+        "telemetry:checkin.viewed",
+        "telemetry:value_receipt.viewed"
+      ],
+      "tests": [
+        "@F-TELEM-SCRUB"
+      ]
+    },
+    {
+      "id": "F-SUPPORT",
+      "name": "Help and support",
+      "surfaces": [
+        "route:POST /support/ticket",
+        "component:src/content/components/FieldHelp.tsx",
+        "component:src/content/components/ReportProblemForm.tsx",
+        "component:src/popup/SupportCenter.tsx",
+        "lib:src/lib/reportProblem.ts"
+      ],
+      "tests": [
+        "@F-SUPPORT"
+      ]
+    },
+    {
+      "id": "F-MAIL-VERIFY-1",
+      "name": "Account email 1",
+      "surfaces": [
+        "route:POST /auth/register",
+        "route:POST /auth/login",
+        "route:POST /auth/profile",
+        "route:POST /auth/change-password",
+        "route:POST /auth/delete-account",
+        "route:GET /auth/providers",
+        "route:POST /auth/forgot-password",
+        "route:GET /auth/reset",
+        "route:POST /auth/reset",
+        "route:POST /auth/verify-email"
+      ],
+      "tests": [
+        "@F-MAIL-VERIFY"
+      ]
+    },
+    {
+      "id": "F-MAIL-VERIFY-2",
+      "name": "Account email 2",
+      "surfaces": [
+        "route:POST /auth/verify-email/resend",
+        "route:POST /auth/refresh",
+        "route:POST /auth/sign-out-everywhere",
+        "route:GET /auth/me"
+      ],
+      "tests": [
+        "@F-MAIL-VERIFY"
+      ]
+    },
+    {
+      "id": "F-TIER-READ",
+      "name": "Plan tier in the overlay",
+      "surfaces": [
+        "msg:AUTH_STATUS",
+        "msg:GET_TIER",
+        "component:src/content/components/ProfitOverlay.tsx",
+        "component:src/ui/PlanPicker.tsx",
+        "component:src/ui/ProLock.tsx",
+        "lib:src/lib/subscription.ts",
+        "tier:free",
+        "tier:pro",
+        "tier:diamond"
+      ],
+      "tests": [
+        "@F-TIER-READ"
+      ]
+    },
+    {
+      "id": "F-PROFIT-1",
+      "name": "Profit engine and overlay math 1",
+      "surfaces": [
+        "component:src/content/components/AdsCard.tsx",
+        "component:src/content/components/CommissionCard.tsx",
+        "component:src/content/components/CostInputs.tsx",
+        "component:src/content/components/CostWaterfall.tsx",
+        "component:src/content/components/PriceGuardBanner.tsx",
+        "component:src/content/components/ProfitBoard.tsx",
+        "lib:src/lib/bulkCost.ts",
+        "lib:src/lib/diagnose.ts",
+        "lib:src/lib/profit.ts",
+        "lib:src/lib/profitBoard.ts"
+      ],
+      "tests": [
+        "@F-PROFIT"
+      ]
+    },
+    {
+      "id": "F-PROFIT-2",
+      "name": "Profit engine and overlay math 2",
+      "surfaces": [
+        "lib:src/lib/promoChip.ts",
+        "lib:src/lib/refundFees.ts",
+        "lib:src/lib/shippingCost.ts",
+        "lib:src/lib/skuEconomics.ts",
+        "lib:src/content/priceGuardChip.ts",
+        "flag:creatorProfit",
+        "flag:bulkCost",
+        "setting:defaultShippingOut",
+        "setting:shippingPassedToBuyer",
+        "setting:refundRatePct"
+      ],
+      "tests": [
+        "@F-PROFIT"
+      ]
+    },
+    {
+      "id": "F-PROFIT-3",
+      "name": "Profit engine and overlay math 3",
+      "surfaces": [
+        "setting:affiliateCommissionPct"
+      ],
+      "tests": [
+        "@F-PROFIT"
+      ]
+    },
+    {
+      "id": "F-SCRAPE",
+      "name": "Page scrape",
+      "surfaces": [
+        "lib:src/content/scraper/detectPageType.ts",
+        "lib:src/content/scraper/domSelectors.ts",
+        "lib:src/content/scraper/extractUnitsSold.ts",
+        "lib:src/content/scraper/findLabeledField.ts",
+        "lib:src/content/scraper/parseProductListPage.ts",
+        "lib:src/content/scraper/parseProductPage.ts",
+        "lib:src/content/scraper/playwrightScraper.ts",
+        "lib:src/content/syncPageSkus.ts"
+      ],
+      "tests": [
+        "@F-SCRAPE"
+      ]
+    },
+    {
+      "id": "F-SETTINGS-1",
+      "name": "Settings 1",
+      "surfaces": [
+        "component:src/popup/SettingsPanel.tsx",
+        "lib:src/lib/storage.ts",
+        "setting:feePreset",
+        "setting:platformFeePct",
+        "setting:paymentFeePct",
+        "setting:paymentFixed",
+        "setting:defaultCogs",
+        "setting:defaultAdsPerUnit",
+        "setting:salesTaxPct",
+        "setting:packagingPerUnit"
+      ],
+      "tests": [
+        "@F-SETTINGS"
+      ]
+    },
+    {
+      "id": "F-SETTINGS-2",
+      "name": "Settings 2",
+      "surfaces": [
+        "setting:affiliateSharePct",
+        "setting:targetMarginPct",
+        "setting:overlayEnabled",
+        "setting:overlayPosition",
+        "setting:overlayCollapsed",
+        "setting:telemetryConsent"
+      ],
+      "tests": [
+        "@F-SETTINGS"
+      ]
+    },
+    {
+      "id": "F-BUILD-E2E",
+      "name": "Extension build",
+      "surfaces": [
+        "component:src/content/mountOverlay.tsx",
+        "lib:src/lib/extManifestEnv.ts",
+        "lib:src/content/index.ts",
+        "flag:overlay"
+      ],
+      "tests": [
+        "@F-BUILD-E2E"
+      ]
+    },
+    {
+      "id": "F-MSG-1",
+      "name": "Service worker messages 1",
+      "surfaces": [
+        "msg:API_CALL",
+        "msg:AUTH_FORGOT",
+        "msg:AUTH_LOGIN",
+        "msg:AUTH_REGISTER",
+        "msg:GET_LOCAL",
+        "msg:GET_SETTINGS",
+        "msg:GET_SKUS",
+        "msg:GET_SPS",
+        "msg:LOGOUT",
+        "msg:OPEN_EXTERNAL_COMPARE"
+      ],
+      "tests": [
+        "@F-MSG"
+      ]
+    },
+    {
+      "id": "F-MSG-2",
+      "name": "Service worker messages 2",
+      "surfaces": [
+        "msg:OPEN_TAB",
+        "msg:REFRESH_OVERLAY",
+        "msg:REMOVE_LOCAL",
+        "msg:REMOVE_SKUS",
+        "msg:REQUEST_SKU_SYNC",
+        "msg:SAVE_SETTINGS",
+        "msg:SAVE_SKU",
+        "msg:SET_LOCAL",
+        "msg:SHOW_INPAGE_PANEL",
+        "msg:STORAGE_PUSH"
+      ],
+      "tests": [
+        "@F-MSG"
+      ]
+    },
+    {
+      "id": "F-MSG-3",
+      "name": "Service worker messages 3",
+      "surfaces": [
+        "msg:SYNC_ACTIVE_TAB",
+        "msg:SYNC_SKUS",
+        "msg:TOGGLE_INPAGE_PANEL",
+        "msg:TST_PING"
+      ],
+      "tests": [
+        "@F-MSG"
+      ]
+    },
+    {
+      "id": "E-INST-LOAD",
+      "name": "Extension loads and the service worker registers",
+      "surfaces": [
+        "msg:GET_SETTINGS",
+        "msg:AUTH_STATUS"
+      ],
+      "tests": [
+        "@E-INST-LOAD"
+      ]
+    },
+    {
+      "id": "E-INST-ORIGIN",
+      "name": "Content script injects only on the mock seller origin",
+      "surfaces": [],
+      "tests": [
+        "@E-INST-ORIGIN"
+      ]
+    },
+    {
+      "id": "E-INST-SW-RESTART",
+      "name": "Stopping the service worker keeps state and wakes the panel",
+      "surfaces": [],
+      "tests": [
+        "@E-INST-SW-RESTART"
+      ]
+    },
+    {
+      "id": "E-OVL-READ",
+      "name": "Logged-out panel shows the product title and promo price",
+      "surfaces": [
+        "component:src/content/components/ProfitOverlay.tsx",
+        "component:src/content/components/OverlayHeader.tsx",
+        "component:src/content/components/MarkLogo.tsx",
+        "component:src/content/mountOverlay.tsx",
+        "msg:SHOW_INPAGE_PANEL",
+        "msg:TOGGLE_INPAGE_PANEL",
+        "msg:TST_PING",
+        "msg:REFRESH_OVERLAY",
+        "msg:STORAGE_PUSH"
+      ],
+      "tests": [
+        "@E-OVL-READ"
+      ]
+    },
+    {
+      "id": "E-OVL-STRIP",
+      "name": "Logged-out strip, footer, and help button",
+      "surfaces": [
+        "component:src/content/components/OverlayAuth.tsx",
+        "component:src/popup/LegalFooter.tsx"
+      ],
+      "tests": [
+        "@E-OVL-STRIP"
+      ]
+    },
+    {
+      "id": "E-OVL-LIVE-EDIT",
+      "name": "Editing the page price updates the overlay net",
+      "surfaces": [],
+      "tests": [
+        "@E-OVL-LIVE-EDIT"
+      ]
+    },
+    {
+      "id": "E-OVL-NOPRICE",
+      "name": "A page with no price asks for a selling price",
+      "surfaces": [],
+      "tests": [
+        "@E-OVL-NOPRICE"
+      ]
+    },
+    {
+      "id": "E-OVL-BLANK",
+      "name": "A missing page shows no numbers",
+      "surfaces": [],
+      "tests": [
+        "@E-OVL-BLANK"
+      ]
+    },
+    {
+      "id": "E-OVL-COLLAPSE",
+      "name": "Minimize persists across reload",
+      "surfaces": [],
+      "tests": [
+        "@E-OVL-COLLAPSE"
+      ]
+    },
+    {
+      "id": "E-OVL-CLOSE",
+      "name": "Close hides the panel for this tab until it is opened again",
+      "surfaces": [],
+      "tests": [
+        "@E-OVL-CLOSE"
+      ]
+    },
+    {
+      "id": "E-OVL-SAVE-NUDGE",
+      "name": "The panel does not cover the page Save button",
+      "surfaces": [],
+      "tests": [
+        "@E-OVL-SAVE-NUDGE"
+      ]
+    },
+    {
+      "id": "E-OVL-SPA",
+      "name": "SPA navigation updates the title and price",
+      "surfaces": [],
+      "tests": [
+        "@E-OVL-SPA"
+      ]
+    },
+    {
+      "id": "E-OVL-GUARD-CHIP",
+      "name": "A loss product shows the price-guard chip",
+      "surfaces": [
+        "component:src/content/components/PriceGuardBanner.tsx",
+        "component:src/content/components/MetricTip.tsx"
+      ],
+      "tests": [
+        "@E-OVL-GUARD-CHIP"
+      ]
+    },
+    {
+      "id": "E-AUTH-WEAK",
+      "name": "A weak password shows the strength meter and the rule",
+      "surfaces": [],
+      "tests": [
+        "@E-AUTH-WEAK"
+      ]
+    },
+    {
+      "id": "E-AUTH-SIGNUP",
+      "name": "Sign-up shows the nav tabs and creates the user",
+      "surfaces": [
+        "component:src/popup/LoginScreen.tsx",
+        "component:src/ui/PasswordField.tsx",
+        "component:src/popup/AccountPanel.tsx",
+        "msg:AUTH_REGISTER",
+        "msg:AUTH_LOGIN",
+        "msg:AUTH_FORGOT"
+      ],
+      "tests": [
+        "@E-AUTH-SIGNUP"
+      ]
+    },
+    {
+      "id": "E-AUTH-DUP",
+      "name": "A duplicate email is rejected",
+      "surfaces": [],
+      "tests": [
+        "@E-AUTH-DUP"
+      ]
+    },
+    {
+      "id": "E-AUTH-BADPW",
+      "name": "A wrong password is rejected",
+      "surfaces": [],
+      "tests": [
+        "@E-AUTH-BADPW"
+      ]
+    },
+    {
+      "id": "E-AUTH-LOGOUT",
+      "name": "Log out returns the logged-out strip",
+      "surfaces": [
+        "msg:LOGOUT"
+      ],
+      "tests": [
+        "@E-AUTH-LOGOUT"
+      ]
+    },
+    {
+      "id": "E-AUTH-VERIFY",
+      "name": "The emailed code verifies the account",
+      "surfaces": [],
+      "tests": [
+        "@E-AUTH-VERIFY"
+      ]
+    },
+    {
+      "id": "E-AUTH-VERIFY-BAD",
+      "name": "A wrong verify code is rejected",
+      "surfaces": [],
+      "tests": [
+        "@E-AUTH-VERIFY-BAD"
+      ]
+    },
+    {
+      "id": "E-AUTH-RESEND",
+      "name": "Resend within 60 seconds is rate limited",
+      "surfaces": [],
+      "tests": [
+        "@E-AUTH-RESEND"
+      ]
+    },
+    {
+      "id": "E-AUTH-RESET",
+      "name": "Forgot password resets through the emailed link",
+      "surfaces": [],
+      "tests": [
+        "@E-AUTH-RESET"
+      ]
+    },
+    {
+      "id": "E-AUTH-REVOKE",
+      "name": "Sign-out everywhere expires the overlay session",
+      "surfaces": [],
+      "tests": [
+        "@E-AUTH-REVOKE"
+      ]
+    },
+    {
+      "id": "E-AUTH-OAUTH-TICKET",
+      "name": "An OAuth ticket logs the seller tab in",
+      "surfaces": [
+        "msg:CLAIM_OAUTH_TICKET",
+        "msg:OAUTH_FINISHED",
+        "msg:START_OAUTH",
+        "msg:SCAN_OAUTH"
+      ],
+      "tests": [
+        "@E-AUTH-OAUTH-TICKET"
+      ]
+    },
+    {
+      "id": "E-AUTH-SOCIAL-BUTTONS",
+      "name": "Social buttons follow the provider list",
+      "surfaces": [
+        "component:src/popup/SocialAuthButtons.tsx",
+        "component:src/popup/SocialBrandIcons.tsx"
+      ],
+      "tests": [
+        "@E-AUTH-SOCIAL-BUTTONS"
+      ]
+    },
+    {
+      "id": "E-COST-ENTRY",
+      "name": "Hero cost entry opens the cost grid and saves",
+      "surfaces": [
+        "component:src/content/components/CostInputs.tsx",
+        "component:src/content/components/CostWaterfall.tsx",
+        "msg:SAVE_SKU",
+        "msg:GET_SKUS",
+        "msg:REMOVE_LOCAL"
+      ],
+      "tests": [
+        "@E-COST-ENTRY"
+      ]
+    },
+    {
+      "id": "E-COST-PERSIST",
+      "name": "Saved costs survive a reload",
+      "surfaces": [],
+      "tests": [
+        "@E-COST-PERSIST"
+      ]
+    },
+    {
+      "id": "E-COST-MATH",
+      "name": "Net and margin match the engine and the golden value",
+      "surfaces": [],
+      "tests": [
+        "@E-COST-MATH"
+      ]
+    },
+    {
+      "id": "E-COST-PROLOCK",
+      "name": "A free user sees the Pro lock, including the loss copy",
+      "surfaces": [
+        "component:src/ui/ProLock.tsx",
+        "component:src/ui/upgrade.tsx"
+      ],
+      "tests": [
+        "@E-COST-PROLOCK"
+      ]
+    },
+    {
+      "id": "E-COST-HELP",
+      "name": "Help opens and closes for cost topics",
+      "surfaces": [
+        "component:src/content/components/FieldHelp.tsx"
+      ],
+      "tests": [
+        "@E-COST-HELP"
+      ]
+    },
+    {
+      "id": "E-LAB-HEADLINE",
+      "name": "The lab list headline counts products and missing costs",
+      "surfaces": [],
+      "tests": [
+        "@E-LAB-HEADLINE"
+      ]
+    },
+    {
+      "id": "E-LAB-SYNC",
+      "name": "Sync imports the lab list, then reports it is up to date",
+      "surfaces": [
+        "component:src/popup/AutoSyncBar.tsx",
+        "msg:SYNC_SKUS",
+        "msg:REMOVE_SKUS",
+        "msg:REQUEST_SKU_SYNC",
+        "msg:SYNC_ACTIVE_TAB"
+      ],
+      "tests": [
+        "@E-LAB-SYNC"
+      ]
+    },
+    {
+      "id": "E-LAB-NUMBERS",
+      "name": "Every lab product net, margin, and verdict matches the answer key",
+      "surfaces": [
+        "component:src/content/components/ProfitBoard.tsx",
+        "component:src/dashboard/SkuDashboard.tsx",
+        "component:src/content/components/FirstRunChecklist.tsx"
+      ],
+      "tests": [
+        "@E-LAB-NUMBERS"
+      ]
+    },
+    {
+      "id": "E-LAB-BUCKETS-BEFORE",
+      "name": "Profit board buckets match the answer key before the statement",
+      "surfaces": [],
+      "tests": [
+        "@E-LAB-BUCKETS-BEFORE"
+      ]
+    },
+    {
+      "id": "E-LAB-STATEMENT",
+      "name": "Importing the statement moves product I to thin",
+      "surfaces": [
+        "component:src/dashboard/StatementImport.tsx"
+      ],
+      "tests": [
+        "@E-LAB-STATEMENT"
+      ]
+    },
+    {
+      "id": "E-LAB-XLSX",
+      "name": "A small xlsx statement imports",
+      "surfaces": [],
+      "tests": [
+        "@E-LAB-XLSX"
+      ]
+    },
+    {
+      "id": "E-LAB-IMPORT-LIMITS",
+      "name": "Oversized statement files show the size and row limits",
+      "surfaces": [],
+      "tests": [
+        "@E-LAB-IMPORT-LIMITS"
+      ]
+    },
+    {
+      "id": "E-LAB-50-FREE",
+      "name": "A free account can import 50 price-only rows",
+      "surfaces": [],
+      "tests": [
+        "@E-LAB-50-FREE"
+      ]
+    },
+    {
+      "id": "E-LIMIT-6TH",
+      "name": "The sixth saved cost hits the free limit",
+      "surfaces": [],
+      "tests": [
+        "@E-LIMIT-6TH"
+      ]
+    },
+    {
+      "id": "E-LIMIT-UNLOCK",
+      "name": "Unlock unlimited opens the plans view",
+      "surfaces": [],
+      "tests": [
+        "@E-LIMIT-UNLOCK"
+      ]
+    },
+    {
+      "id": "E-LIMIT-AFTER-UPGRADE",
+      "name": "After upgrading, the sixth save succeeds",
+      "surfaces": [],
+      "tests": [
+        "@E-LIMIT-AFTER-UPGRADE"
+      ]
+    },
+    {
+      "id": "E-BILL-PRICES",
+      "name": "Plans show the prices and trial disclosure from tiers.json",
+      "surfaces": [
+        "component:src/ui/PlanPicker.tsx"
+      ],
+      "tests": [
+        "@E-BILL-PRICES"
+      ]
+    },
+    {
+      "id": "E-BILL-UNVERIFIED",
+      "name": "An unverified user is sent to verify before checkout",
+      "surfaces": [],
+      "tests": [
+        "@E-BILL-UNVERIFIED"
+      ]
+    },
+    {
+      "id": "E-BILL-503-UI",
+      "name": "Checkout without Stripe shows the friendly 503",
+      "surfaces": [],
+      "tests": [
+        "@E-BILL-503-UI"
+      ]
+    },
+    {
+      "id": "E-BILL-PRO-LIVE",
+      "name": "A signed checkout unlocks Pro on the open overlay",
+      "surfaces": [
+        "component:src/content/components/CommissionCard.tsx",
+        "component:src/content/components/AdsCard.tsx",
+        "msg:GET_TIER"
+      ],
+      "tests": [
+        "@E-BILL-PRO-LIVE"
+      ]
+    },
+    {
+      "id": "E-BILL-SAMPLE",
+      "name": "The free-sample button increments and persists",
+      "surfaces": [],
+      "tests": [
+        "@E-BILL-SAMPLE"
+      ]
+    },
+    {
+      "id": "E-BILL-GRACE",
+      "name": "A failed invoice keeps Pro",
+      "surfaces": [],
+      "tests": [
+        "@E-BILL-GRACE"
+      ]
+    },
+    {
+      "id": "E-BILL-CANCEL-LIVE",
+      "name": "Deleting the subscription returns the overlay to Free",
+      "surfaces": [],
+      "tests": [
+        "@E-BILL-CANCEL-LIVE"
+      ]
+    },
+    {
+      "id": "E-BILL-LATE-INVOICE",
+      "name": "A late invoice.paid does not restore Pro",
+      "surfaces": [],
+      "tests": [
+        "@E-BILL-LATE-INVOICE"
+      ]
+    },
+    {
+      "id": "E-BILL-DONE-TAB",
+      "name": "The billing done page refreshes the tier",
+      "surfaces": [],
+      "tests": [
+        "@E-BILL-DONE-TAB"
+      ]
+    },
+    {
+      "id": "E-BILL-PROMO",
+      "name": "Promo codes redeem once and reject bad or repeat codes",
+      "surfaces": [],
+      "tests": [
+        "@E-BILL-PROMO"
+      ]
+    },
+    {
+      "id": "E-BILL-DIAMOND-HIDDEN",
+      "name": "Diamond stays hidden while its flag is off",
+      "surfaces": [],
+      "tests": [
+        "@E-BILL-DIAMOND-HIDDEN"
+      ]
+    },
+    {
+      "id": "E-SET-PRESETS",
+      "name": "Fee presets change the net by the engine amount",
+      "surfaces": [
+        "component:src/popup/SettingsPanel.tsx",
+        "component:src/popup/SelfTestPanel.tsx"
+      ],
+      "tests": [
+        "@E-SET-PRESETS"
+      ]
+    },
+    {
+      "id": "E-SET-CUSTOM",
+      "name": "Custom fees persist and show as custom",
+      "surfaces": [],
+      "tests": [
+        "@E-SET-CUSTOM"
+      ]
+    },
+    {
+      "id": "E-SET-TARGET",
+      "name": "Target margin changes the verdict",
+      "surfaces": [],
+      "tests": [
+        "@E-SET-TARGET"
+      ]
+    },
+    {
+      "id": "E-SET-SHIPPING",
+      "name": "The shipping toggle shows the field and changes the net",
+      "surfaces": [],
+      "tests": [
+        "@E-SET-SHIPPING"
+      ]
+    },
+    {
+      "id": "E-SET-POSITION",
+      "name": "Bottom-left pins the panel to the left",
+      "surfaces": [],
+      "tests": [
+        "@E-SET-POSITION"
+      ]
+    },
+    {
+      "id": "E-SET-DISABLED",
+      "name": "Turning the overlay off hides it until it is opened",
+      "surfaces": [],
+      "tests": [
+        "@E-SET-DISABLED"
+      ]
+    },
+    {
+      "id": "E-SET-TRENDING-CONSENT",
+      "name": "Trending consent is off and sends nothing while the flag is off",
+      "surfaces": [],
+      "tests": [
+        "@E-SET-TRENDING-CONSENT"
+      ]
+    },
+    {
+      "id": "E-SET-PERSIST",
+      "name": "Settings survive a reload",
+      "surfaces": [
+        "msg:SAVE_SETTINGS",
+        "msg:GET_LOCAL",
+        "msg:SET_LOCAL"
+      ],
+      "tests": [
+        "@E-SET-PERSIST"
+      ]
+    },
+    {
+      "id": "E-SUP-SUBMIT",
+      "name": "A support ticket is stored and emailed",
+      "surfaces": [
+        "component:src/popup/SupportCenter.tsx",
+        "msg:API_CALL",
+        "msg:OPEN_TAB",
+        "msg:OPEN_EXTERNAL_COMPARE",
+        "msg:GET_SPS"
+      ],
+      "tests": [
+        "@E-SUP-SUBMIT"
+      ]
+    },
+    {
+      "id": "E-SUP-CONTEXT",
+      "name": "The support message includes page context",
+      "surfaces": [],
+      "tests": [
+        "@E-SUP-CONTEXT"
+      ]
+    },
+    {
+      "id": "E-SUP-BAD-EMAIL",
+      "name": "An invalid support email is rejected",
+      "surfaces": [],
+      "tests": [
+        "@E-SUP-BAD-EMAIL"
+      ]
+    },
+    {
+      "id": "E-SUP-RATE",
+      "name": "The sixth support ticket in a minute is rate limited",
+      "surfaces": [],
+      "tests": [
+        "@E-SUP-RATE"
+      ]
+    },
+    {
+      "id": "E-ACC-NAME",
+      "name": "The display name can be changed",
+      "surfaces": [
+        "component:src/popup/ProfilePanel.tsx"
+      ],
+      "tests": [
+        "@E-ACC-NAME"
+      ]
+    },
+    {
+      "id": "E-ACC-EMAIL",
+      "name": "Changing the email clears verification",
+      "surfaces": [],
+      "tests": [
+        "@E-ACC-EMAIL"
+      ]
+    },
+    {
+      "id": "E-ACC-PASSWORD",
+      "name": "A password change keeps this session and rejects the old token",
+      "surfaces": [],
+      "tests": [
+        "@E-ACC-PASSWORD"
+      ]
+    },
+    {
+      "id": "E-ACC-SIGNOUT-ALL",
+      "name": "Sign out everywhere from the account panel",
+      "surfaces": [],
+      "tests": [
+        "@E-ACC-SIGNOUT-ALL"
+      ]
+    },
+    {
+      "id": "E-ACC-DELETE",
+      "name": "Deleting the account removes the user and shows the logged-out strip",
+      "surfaces": [],
+      "tests": [
+        "@E-ACC-DELETE"
+      ]
+    },
+    {
+      "id": "E-RES-API-DOWN",
+      "name": "A stopped API shows connection lost and profit still computes",
+      "surfaces": [],
+      "tests": [
+        "@E-RES-API-DOWN"
+      ]
+    },
+    {
+      "id": "E-RES-CACHED-PRO",
+      "name": "A cached Pro plan stays Pro while the API is down",
+      "surfaces": [],
+      "tests": [
+        "@E-RES-CACHED-PRO"
+      ]
+    },
+    {
+      "id": "E-RES-EXT-RELOAD",
+      "name": "An extension reload does not flip Pro to Free",
+      "surfaces": [],
+      "tests": [
+        "@E-RES-EXT-RELOAD"
+      ]
+    },
+    {
+      "id": "E-RES-REMOTE-SELECTOR",
+      "name": "A signed remote selector reads a price the bundled selectors miss",
+      "surfaces": [],
+      "tests": [
+        "@E-RES-REMOTE-SELECTOR"
+      ]
+    },
+    {
+      "id": "E-RES-BAD-SIGNATURE",
+      "name": "A config with a bad signature is ignored",
+      "surfaces": [],
+      "tests": [
+        "@E-RES-BAD-SIGNATURE"
+      ]
+    },
+    {
+      "id": "E-RES-PERF",
+      "name": "The panel renders within 1.5s on the 50-row list",
+      "surfaces": [],
+      "tests": [
+        "@E-RES-PERF"
+      ]
+    },
+    {
+      "id": "E-VIS-SNAPSHOTS",
+      "name": "Screenshot baselines of the main panels",
+      "surfaces": [
+        "component:src/ui/primitives.tsx",
+        "component:src/ui/icons.tsx",
+        "component:src/content/components/SpsBadge.tsx"
+      ],
+      "tests": [
+        "@E-VIS-SNAPSHOTS"
+      ]
+    },
+    {
+      "id": "E-A11Y-AXE",
+      "name": "The open panel has no critical or serious accessibility violations",
+      "surfaces": [],
+      "tests": [
+        "@E-A11Y-AXE"
+      ]
+    },
+    {
+      "id": "E-FLAG-overlay",
+      "name": "Bundled overlay flag",
+      "surfaces": [],
+      "tests": [
+        "@E-FLAG-overlay"
+      ]
+    },
+    {
+      "id": "E-FLAG-productCheck",
+      "name": "Bundled product-check flag",
+      "surfaces": [],
+      "tests": [
+        "@E-FLAG-productCheck"
+      ]
+    },
+    {
+      "id": "E-FLAG-aiInsights",
+      "name": "AI insights flag, off until remote config enables it",
+      "surfaces": [],
+      "tests": [
+        "@E-FLAG-aiInsights"
+      ]
+    },
+    {
+      "id": "E-FLAG-trendsTelemetry",
+      "name": "Trends telemetry flag",
+      "surfaces": [],
+      "tests": [
+        "@E-FLAG-trendsTelemetry"
+      ]
+    },
+    {
+      "id": "E-FLAG-trendsView",
+      "name": "Trends view flag, off until remote config enables it",
+      "surfaces": [],
+      "tests": [
+        "@E-FLAG-trendsView"
+      ]
+    },
+    {
+      "id": "E-FLAG-diamondEnabled",
+      "name": "Diamond flag, off until remote config enables it",
+      "surfaces": [],
+      "tests": [
+        "@E-FLAG-diamondEnabled"
+      ]
+    },
+    {
+      "id": "E-FLAG-statementImport",
+      "name": "Statement import flag",
+      "surfaces": [],
+      "tests": [
+        "@E-FLAG-statementImport"
+      ]
+    },
+    {
+      "id": "E-FLAG-bulkScan",
+      "name": "Bulk scan flag, off until remote config enables it",
+      "surfaces": [],
+      "tests": [
+        "@E-FLAG-bulkScan"
+      ]
+    },
+    {
+      "id": "E-FLAG-promoGuard",
+      "name": "Promo guard flag",
+      "surfaces": [],
+      "tests": [
+        "@E-FLAG-promoGuard"
+      ]
+    },
+    {
+      "id": "E-FLAG-whatIf",
+      "name": "What-if flag, off until remote config enables it",
+      "surfaces": [
+        "component:src/content/components/WhatIfPanel.tsx",
+        "component:src/content/components/ExternalPriceCompare.tsx"
+      ],
+      "tests": [
+        "@E-FLAG-whatIf"
+      ]
+    },
+    {
+      "id": "E-FLAG-csvExport",
+      "name": "CSV export flag, off until remote config enables it",
+      "surfaces": [],
+      "tests": [
+        "@E-FLAG-csvExport"
+      ]
+    },
+    {
+      "id": "E-FLAG-creatorProfit",
+      "name": "Creator profit flag",
+      "surfaces": [],
+      "tests": [
+        "@E-FLAG-creatorProfit"
+      ]
+    },
+    {
+      "id": "E-FLAG-bulkCost",
+      "name": "Bulk cost flag",
+      "surfaces": [],
+      "tests": [
+        "@E-FLAG-bulkCost"
+      ]
+    },
+    {
+      "id": "E-STRIPE-REAL",
+      "name": "Real Stripe test-mode checkout",
+      "surfaces": [],
+      "tests": [
+        "@E-STRIPE-REAL"
+      ]
+    },
+    {
+      "id": "E-LIVE-SHOP",
+      "name": "Read-only Seller Center smoke",
+      "surfaces": [],
+      "tests": [
+        "@E-LIVE-SHOP"
+      ]
+    }
+  ],
+  "deadCode": [
+    "component:src/dashboard/CreatorPerformance.tsx",
+    "component:src/popup/AuthSplash.tsx",
+    "component:src/popup/InactivePopup.tsx",
+    "component:src/popup/Popup.tsx",
+    "component:src/popup/PopupHeader.tsx",
+    "component:src/popup/ProUpsell.tsx",
+    "component:src/popup/SoftNudge.tsx",
+    "component:src/popup/SupportScreen.tsx",
+    "component:src/popup/WelcomeGuide.tsx",
+    "component:src/popup/main.tsx",
+    "lib:src/lib/uxFlags.ts"
+  ]
+}

@@ -186,7 +186,13 @@ export async function syncSkus(
       skipped += 1;
     }
     store[sku.skuId] = next;
-    saved += 1;
+    const unchanged =
+      existing != null &&
+      existing.title === next.title &&
+      existing.listPrice === next.listPrice &&
+      (existing.unitsSold ?? 0) === (next.unitsSold ?? 0) &&
+      (existing.listPriceOriginal ?? null) === (next.listPriceOriginal ?? null);
+    if (!unchanged) saved += 1;
   }
 
   await chrome.storage.local.set({ [KEYS.skus]: store });

@@ -107,7 +107,11 @@ def _iso(value: datetime) -> str:
 
 
 def _client_ip(request: Request) -> str:
-    return request.client.host if request.client else ""
+    # Safe only because Fly's edge proxy overwrites fly-client-ip. A client cannot
+    # choose the IP the allowlist sees once the request has passed that proxy.
+    from netutil import client_ip
+
+    return client_ip(request)
 
 
 def _bearer_user(request: Request) -> dict[str, Any]:

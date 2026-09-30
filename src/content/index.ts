@@ -52,7 +52,7 @@ try {
       return true;
     }
     if (msg.type === "SHOW_INPAGE_PANEL") {
-      void showInPagePanel().then(() => sendResponse({ ok: true }));
+      void showInPagePanel().then((detail) => sendResponse({ ok: true, ...detail }));
       return true;
     }
     return undefined;

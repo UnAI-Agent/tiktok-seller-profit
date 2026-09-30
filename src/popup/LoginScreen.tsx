@@ -103,7 +103,7 @@ export default function LoginScreen({ onAuthChange, defaultMode = "login" }: Log
       setMsgTone("error");
       setMsg(
         mode === "signup"
-          ? "Use 8+ characters with at least 3 of: uppercase, lowercase, number, symbol."
+          ? "Password needs at least 3 of: uppercase, lowercase, number, special character"
           : "Enter your password (8+ characters).",
       );
       return;

@@ -62,8 +62,8 @@ export default function StatementImport({ skus, settings, onHelp }: StatementImp
       setRows(table.rows);
       setMapping(suggested);
       setNote(null);
-    } catch {
-      setError("Couldn't read that file. Use a CSV or Excel export.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't read that file. Use a CSV or Excel export.");
     }
   }
 

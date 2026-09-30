@@ -3,6 +3,7 @@ import { PRO_PRICE_MONTHLY, PRO_PRICE_YEARLY, PRIVACY_URL, TERMS_URL } from "../
 import { ApiError } from "../lib/apiErrors";
 import { createCheckoutUrl, fetchMe, trackEvent, type MeResponse } from "../lib/apiClient";
 import { renewalDisclosure, yearlySavingsPct, type BillingInterval } from "../lib/billingDisclosure";
+import { flagEnabled } from "../content/activeConfig";
 import { openTab } from "../lib/openTab";
 import { isPaidTier, refreshTier, tierFromProfile } from "../lib/subscription";
 import tiers from "../tiers.json";
@@ -119,7 +120,6 @@ export default function PlanPicker({
     } catch (err) {
       if (err instanceof ApiError && err.status === 403) {
         setNeedsVerify(true);
-        onNeedVerify?.();
       } else {
         setError(err instanceof ApiError ? err.userMessage : "Checkout didn't open. Nothing was charged. Try again.");
       }
@@ -176,6 +176,10 @@ export default function PlanPicker({
         </div>
       )}
 
+      {flagEnabled("diamondEnabled", "free") && (
+        <p className="text-xs font-semibold text-slate-700">Diamond · ${tiers.diamond.monthlyUsd}/mo</p>
+      )}
+
       <div role="radiogroup" aria-label="Billing period" className="grid grid-cols-2 gap-2">
         {(["yearly", "monthly"] as const).map((id) => {
           const active = interval === id;
@@ -227,7 +231,7 @@ export default function PlanPicker({
       )}
       {needsVerify && (
         <Alert tone="warning">
-          <p className="font-semibold">Verify your email first</p>
+          <p className="font-semibold">Verify your email to start your trial</p>
           <p className="mt-0.5">We sent a 6-digit code when you signed up. Enter it in Account, then come back.</p>
           {onNeedVerify && (
             <Button variant="secondary" size="sm" className="mt-2" onClick={onNeedVerify}>

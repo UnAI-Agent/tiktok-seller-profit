@@ -9,7 +9,13 @@
     "build:lle": "powershell -NoProfile -File scripts/build-lle.ps1",
     "build:prod": "powershell -NoProfile -File scripts/build-prod.ps1",
     "dev:up": "powershell -NoProfile -File scripts/dev-up.ps1 -Build",
+    "build:e2e": "node scripts/build-e2e.mjs",
     "test": "vitest run",
+    "test:backend": "node scripts/test-backend.mjs",
+    "test:e2e": "node scripts/test-e2e.mjs",
+    "test:gate": "node scripts/coverage-gate.mjs",
+    "test:live": "node scripts/test-e2e.mjs --live",
+    "test:everything": "node scripts/test-everything.mjs",
     "test:all": "vitest run",
     "mock:page": "npx --yes serve test-fixtures -p 8765",
     "preview": "vite preview"
@@ -21,7 +27,9 @@
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.10.2",
     "@crxjs/vite-plugin": "^2.0.0-beta.28",
+    "@playwright/test": "^1.55.1",
     "@types/chrome": "^0.0.287",
     "@types/papaparse": "^5.5.2",
     "@types/react": "^18.3.12",

@@ -194,7 +194,9 @@ class StripeWebhookTests(unittest.TestCase):
 
     def test_d_retrieve_canceled_beats_invoice_paid(self):
         self._checkout()
-        live = _subscription("canceled", period_on_item=True)
+        live = marginmark_app.stripe.Subscription.construct_from(
+            _subscription("canceled", period_on_item=True), "sk_test_x"
+        )
         invoice = {
             "id": "in_live",
             "object": "invoice",
@@ -264,7 +266,9 @@ class StripeWebhookTests(unittest.TestCase):
 
     def test_admin_compare_flags_canceled_stripe_subscription(self):
         self._checkout()
-        live = _subscription("canceled")
+        live = marginmark_app.stripe.Subscription.construct_from(
+            _subscription("canceled"), "sk_test_x"
+        )
         with patch.object(marginmark_app, "ADMIN_KEY", "k" * 16), patch.object(
             marginmark_app, "STRIPE_SECRET_KEY", "sk_test_x"
         ), patch.object(marginmark_app.stripe.Subscription, "retrieve", return_value=live):
@@ -279,3 +283,209 @@ class StripeWebhookTests(unittest.TestCase):
         self.assertEqual(body["stripe_status"], "canceled")
         self.assertTrue(body["mismatch"])
         self.assertNotIn("email", body)
+
+    def _me(self):
+        token = marginmark_app.make_token(self.uid)
+        response = self.client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})
+        self.assertEqual(response.status_code, 200, response.text)
+        return response.json()
+
+    def test_resubscribe_clears_stale_canceled_columns(self):
+        """@F-BILL-RESUB A new subscription must not keep stripe_status=canceled from the old one."""
+        sub_b = "sub_resub_B"
+        self._checkout()
+        deleted = self._post(
+            _event("evt_resub_deleted", "customer.subscription.deleted", _subscription("canceled"), 300)
+        )
+        self.assertEqual(deleted.status_code, 200, deleted.text)
+        self.assertEqual(self._row()["stripe_status"], "canceled")
+        checkout_b = self._post(
+            _event(
+                "evt_resub_checkout",
+                "checkout.session.completed",
+                {
+                    "id": "cs_resub",
+                    "object": "checkout.session",
+                    "client_reference_id": str(self.uid),
+                    "subscription": sub_b,
+                    "metadata": {"user_id": str(self.uid), "tier": "pro"},
+                },
+                400,
+            )
+        )
+        self.assertEqual(checkout_b.status_code, 200, checkout_b.text)
+        invoice = {
+            "id": "in_resub",
+            "object": "invoice",
+            "parent": {"subscription_details": {"subscription": sub_b}},
+        }
+        with patch.object(marginmark_app, "STRIPE_SECRET_KEY", "sk_test_x"), patch.object(
+            marginmark_app.stripe.Subscription,
+            "retrieve",
+            side_effect=marginmark_app.stripe.error.StripeError("retrieve down"),
+        ):
+            paid = self._post(_event("evt_resub_paid", "invoice.paid", invoice, 500))
+        self.assertEqual(paid.status_code, 200, paid.text)
+        row = self._row()
+        self.assertEqual(row["stripe_sub_id"], sub_b)
+        self.assertEqual(row["status"], "active")
+        self.assertNotEqual(row["stripe_status"], "canceled")
+        me = self._me()
+        self.assertNotEqual(me["plan_status"], "canceled")
+        self.assertTrue(me["is_pro"])
+
+    def test_late_checkout_skips_canceled_and_incomplete_expired(self):
+        """@F-BILL-LATECS checkout.session.completed must not revive a dead Stripe subscription."""
+        self._checkout()
+        deleted = self._post(
+            _event("evt_latecs_deleted", "customer.subscription.deleted", _subscription("canceled"), 300)
+        )
+        self.assertEqual(deleted.status_code, 200, deleted.text)
+        canceled = marginmark_app.stripe.Subscription.construct_from(
+            _subscription("canceled"), "sk_test_x"
+        )
+        with patch.object(marginmark_app, "STRIPE_SECRET_KEY", "sk_test_x"), patch.object(
+            marginmark_app.stripe.Subscription, "retrieve", return_value=canceled
+        ):
+            late = self._post(
+                _event(
+                    "evt_late_checkout",
+                    "checkout.session.completed",
+                    {
+                        "id": "cs_late",
+                        "object": "checkout.session",
+                        "client_reference_id": str(self.uid),
+                        "subscription": SUB,
+                        "metadata": {"user_id": str(self.uid), "tier": "pro"},
+                    },
+                    500,
+                )
+            )
+        self.assertEqual(late.status_code, 200, late.text)
+        self.assertEqual(self._row()["status"], "free")
+        self.assertEqual(self._row()["stripe_status"], "canceled")
+
+        expired = marginmark_app.stripe.Subscription.construct_from(
+            _subscription("incomplete_expired"), "sk_test_x"
+        )
+        with patch.object(marginmark_app, "STRIPE_SECRET_KEY", "sk_test_x"), patch.object(
+            marginmark_app.stripe.Subscription, "retrieve", return_value=expired
+        ):
+            again = self._post(
+                _event(
+                    "evt_late_checkout_expired",
+                    "checkout.session.completed",
+                    {
+                        "id": "cs_late_expired",
+                        "object": "checkout.session",
+                        "client_reference_id": str(self.uid),
+                        "subscription": SUB,
+                        "metadata": {"user_id": str(self.uid), "tier": "pro"},
+                    },
+                    600,
+                )
+            )
+        self.assertEqual(again.status_code, 200, again.text)
+        self.assertEqual(self._row()["status"], "free")
+
+    def test_retrieve_subscription_converts_non_dict_stripe_object(self):
+        """@F-BILL-RETRIEVE Live lookup must not depend on StripeObject subclassing dict."""
+
+        class Remote:
+            def to_dict_recursive(self):
+                return _subscription("active", period_on_item=True)
+
+        self.assertNotIsInstance(Remote(), dict)
+        with patch.object(marginmark_app, "STRIPE_SECRET_KEY", "sk_test_x"), patch.object(
+            marginmark_app.stripe.Subscription, "retrieve", return_value=Remote()
+        ):
+            live = marginmark_app._retrieve_subscription(SUB)
+        self.assertIsNotNone(live)
+        self.assertEqual(live["status"], "active")
+        self.assertEqual(live["id"], SUB)
+
+    def test_lifecycle_me_follows_every_step(self):
+        """@F-BILL-LIFE checkout, trial, paid, past_due grace, day 4 free, paid again, deleted."""
+        from datetime import timedelta
+
+        real = marginmark_app.datetime
+
+        class Clock(real):
+            offset = timedelta(0)
+
+            @classmethod
+            def now(cls, tz=None):
+                return real.now(tz or timezone.utc) + cls.offset
+
+        def me_is_pro():
+            return self._me()["is_pro"]
+
+        with patch.object(marginmark_app, "datetime", Clock):
+            self._checkout()
+            self.assertTrue(me_is_pro())
+            trial = self._post(
+                _event("evt_life_trial", "customer.subscription.updated", _subscription("trialing"), 110)
+            )
+            self.assertEqual(trial.status_code, 200, trial.text)
+            self.assertEqual(self._me()["plan_status"], "trialing")
+            self.assertTrue(me_is_pro())
+            invoice = {
+                "id": "in_life",
+                "object": "invoice",
+                "parent": {"subscription_details": {"subscription": SUB}},
+            }
+            paid = self._post(_event("evt_life_paid", "invoice.paid", invoice, 120))
+            self.assertEqual(paid.status_code, 200, paid.text)
+            self.assertTrue(me_is_pro())
+            active = self._post(
+                _event("evt_life_active", "customer.subscription.updated", _subscription("active"), 130)
+            )
+            self.assertEqual(active.status_code, 200, active.text)
+            self.assertEqual(self._me()["plan_status"], "active")
+            failed = self._post(_event("evt_life_fail", "invoice.payment_failed", invoice, 140))
+            self.assertEqual(failed.status_code, 200, failed.text)
+            self.assertTrue(me_is_pro())
+            Clock.offset = timedelta(days=4)
+            self.assertFalse(me_is_pro())
+            Clock.offset = timedelta(0)
+            recovered = self._post(_event("evt_life_recovered", "invoice.paid", {**invoice, "id": "in_life_2"}, 150))
+            self.assertEqual(recovered.status_code, 200, recovered.text)
+            self.assertTrue(me_is_pro())
+            deleted = self._post(
+                _event("evt_life_deleted", "customer.subscription.deleted", _subscription("canceled"), 160)
+            )
+            self.assertEqual(deleted.status_code, 200, deleted.text)
+            self.assertFalse(me_is_pro())
+            late = self._post(_event("evt_life_late", "invoice.paid", {**invoice, "id": "in_life_late"}, 170))
+            self.assertEqual(late.status_code, 200, late.text)
+            self.assertFalse(me_is_pro())
+
+    def test_diamond_price_keeps_diamond(self):
+        """@F-BILL-DIAMOND-PRICE A Diamond price does not fall back to Pro."""
+        os.environ["STRIPE_PRICE_DIAMOND_MONTHLY"] = "price_diamond_month"
+        self.addCleanup(lambda: os.environ.pop("STRIPE_PRICE_DIAMOND_MONTHLY", None))
+        response = self._post(
+            _event(
+                "evt_diamond_checkout",
+                "checkout.session.completed",
+                {
+                    "id": "cs_diamond",
+                    "object": "checkout.session",
+                    "client_reference_id": str(self.uid),
+                    "subscription": SUB,
+                    "metadata": {
+                        "user_id": str(self.uid),
+                        "tier": "diamond",
+                        "price_id": "price_diamond_month",
+                    },
+                },
+                100,
+            )
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        body = _subscription("active")
+        body["items"]["data"][0]["price"]["id"] = "price_diamond_month"
+        updated = self._post(_event("evt_diamond_updated", "customer.subscription.updated", body, 110))
+        self.assertEqual(updated.status_code, 200, updated.text)
+        self.assertEqual(self._row()["tier"], "diamond")
+        self.assertEqual(self._me()["tier"], "diamond")

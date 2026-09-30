@@ -60,9 +60,10 @@ function paidOrFree(tier: unknown): SubscriptionTier {
  * The cached plan, from any context. Seller Center pages cannot read extension
  * storage, so they ask the service worker. No network call.
  */
-export async function readTier(): Promise<SubscriptionTier> {
+export async function readTier(): Promise<SubscriptionTier | null> {
   const res = await sendMessage({ type: "GET_TIER" });
-  return res.ok ? paidOrFree(res.tier) : "free";
+  // A failed message (extension reload) is not a Free answer. Callers ignore null.
+  return res.ok ? paidOrFree(res.tier) : null;
 }
 
 /** Ask the service worker to re-check the plan with the API now, then return it. */

@@ -584,11 +584,17 @@ chrome.runtime.onMessage.addListener(
             const token = await getStoredToken();
             const headers: Record<string, string> = { "Content-Type": "application/json" };
             if (token) headers.Authorization = `Bearer ${token}`;
-            const res = await fetch(`${API_BASE_URL}${message.path}`, {
-              method: message.method,
-              headers,
-              body: message.method === "POST" ? message.body ?? "{}" : undefined,
-            });
+            let res: Response;
+            try {
+              res = await fetch(`${API_BASE_URL}${message.path}`, {
+                method: message.method,
+                headers,
+                body: message.method === "POST" ? message.body ?? "{}" : undefined,
+              });
+            } catch {
+              sendResponse({ ok: false, error: "Connection lost. Check your internet.", status: 0 });
+              return;
+            }
             const text = await res.text();
             let json: unknown = null;
             try {

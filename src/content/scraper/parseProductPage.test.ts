@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { editPageHtml, loadLabProducts } from "../../../e2e/support/editPages.mjs";
 import { parseMoney, parseProductFromHtml } from "./parseProductPage";
 import {
   MOCK_PRODUCT_EDITOR_HTML,
@@ -7,7 +8,7 @@ import {
 } from "../../test/mockPages";
 
 describe("parseProductFromHtml", () => {
-  it("reads title and price from mock TikTok editor", () => {
+  it("reads title and price from mock TikTok editor @F-SCRAPE", () => {
     const p = parseProductFromHtml(MOCK_PRODUCT_EDITOR_HTML, MOCK_SELLER_HREF);
     expect(p.hints.onProductEditor).toBe(true);
     expect(p.title).toContain("Ailun");
@@ -34,6 +35,23 @@ describe("parseProductFromHtml", () => {
     expect(p.listPrice).toBe(0);
     expect(p.scrapeStatus).toBe("partial");
     expect(p.hints.hasPriceField).toBe(true);
+  });
+});
+
+describe("generated lab edit pages", () => {
+  it("reads each lab product title, list price, and promo price @F-SCRAPE", () => {
+    for (const product of loadLabProducts()) {
+      const href = `http://127.0.0.1:8765/product/edit/${product.skuId}`;
+      const parsed = parseProductFromHtml(editPageHtml(product), href);
+      expect(parsed.title).toBe(product.title);
+      if (product.listPriceOriginal != null) {
+        expect(parsed.listPrice).toBe(product.listPriceOriginal);
+        expect(parsed.promoPrice).toBe(product.listPrice);
+      } else {
+        expect(parsed.listPrice).toBe(product.listPrice);
+        expect(parsed.promoPrice ?? null).toBeNull();
+      }
+    }
   });
 });
 

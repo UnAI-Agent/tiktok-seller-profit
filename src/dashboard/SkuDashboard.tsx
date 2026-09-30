@@ -15,6 +15,7 @@ import {
 } from "../lib/profit";
 import { profitInputFor } from "../lib/skuEconomics";
 import { sendMessage } from "../lib/messages";
+import { flagEnabled } from "../content/activeConfig";
 import { savedCostCount } from "../lib/skuLimit";
 import { HoverTip, type HelpTopic } from "../content/components/FieldHelp";
 import { LockIcon } from "../ui/icons";
@@ -541,9 +542,11 @@ export default function SkuDashboard({ skus, isPro, settings, focusMissing, edit
       {isPro ? (
         <>
           <StatementImport skus={skus} settings={settings} onHelp={onHelp} />
-          <Button variant="secondary" size="sm" onClick={exportCsv}>
-            Export CSV
-          </Button>
+          {flagEnabled("csvExport", "pro") && (
+            <Button variant="secondary" size="sm" onClick={exportCsv}>
+              Export CSV
+            </Button>
+          )}
         </>
       ) : (
         <ProLock

@@ -158,6 +158,9 @@ function PortfolioHero({ portfolio, label }: { portfolio?: PortfolioSummary; lab
   let tone: Tone = "neutral";
   let headline = `${count} product${count === 1 ? "" : "s"} on this page`;
   let detail = "Add a cost to each product to see who makes money.";
+  if (count > 0 && missing === count) {
+    headline = `${count} products · ${missing} missing costs`;
+  }
   if (count > 0 && priced > 0) {
     if (losing > 0) {
       tone = "loss";

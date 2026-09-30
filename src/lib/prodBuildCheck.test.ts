@@ -47,6 +47,21 @@ describe("checkProdBuild", () => {
     expect(errors.join(" ")).toMatch(/TikTok Seller Tool/);
   });
 
+  it("rejects an open overlay shadow root @F-BUILD-E2E", () => {
+    const errors = checkProdBuild({
+      manifest,
+      bundleText: 'host.attachShadow({ mode: "open" })',
+      lastPublished: "0.1.0",
+    });
+    expect(errors).toContain("test build: overlay shadow root is open (built with VITE_E2E=1)");
+    const minified = checkProdBuild({
+      manifest,
+      bundleText: 'Da="open";el.attachShadow({mode:Da})',
+      lastPublished: "0.1.0",
+    });
+    expect(minified).toContain("test build: overlay shadow root is open (built with VITE_E2E=1)");
+  });
+
   it("rejects the LLE test-data strip", () => {
     const errors = checkProdBuild({
       manifest,

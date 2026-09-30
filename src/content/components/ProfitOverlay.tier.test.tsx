@@ -18,6 +18,7 @@ const product: ScrapedProduct = {
 describe("overlay plan follows storage", () => {
   const listeners: Array<(message: { type?: string; keys?: string[] }) => void> = [];
   let cachedTier: "pro" | "free" = "pro";
+  let tierReadOk = true;
 
   afterEach(() => {
     listeners.length = 0;
@@ -31,7 +32,12 @@ describe("overlay plan follows storage", () => {
         id: "ext",
         getManifest: () => ({ version: "1.4.0" }),
         sendMessage: (message: { type?: string }) => {
-          if (message.type === "GET_TIER") return Promise.resolve({ ok: true, tier: cachedTier });
+          if (message.type === "GET_TIER") {
+            if (!tierReadOk) {
+              return Promise.resolve({ ok: false, error: "Extension reloaded. Refresh this tab." });
+            }
+            return Promise.resolve({ ok: true, tier: cachedTier });
+          }
           if (message.type === "API_CALL") {
             return Promise.resolve({
               ok: true,
@@ -77,7 +83,28 @@ describe("overlay plan follows storage", () => {
     return { host, root };
   }
 
-  it("a paid-to-Free STORAGE_PUSH lowers the tier", async () => {
+  it("a failed tier read keeps Pro @F-TIER-READ", async () => {
+    cachedTier = "pro";
+    tierReadOk = false;
+    const { host, root } = mount();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(host.textContent).toContain("PRO");
+    await act(async () => {
+      for (const listener of [...listeners]) {
+        listener({ type: "STORAGE_PUSH", keys: ["subscription"] });
+      }
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(host.textContent).toContain("PRO");
+    expect(host.textContent?.includes("FREE")).toBe(false);
+    act(() => root.unmount());
+  });
+
+  it("a paid-to-Free STORAGE_PUSH lowers the tier @F-TIER-READ", async () => {
+    tierReadOk = true;
     cachedTier = "pro";
     const { host, root } = mount();
     await act(async () => {

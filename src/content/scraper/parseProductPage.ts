@@ -205,10 +205,15 @@ export function parseProductFromDocument(
   const priceControl = findPriceControl(doc);
   const priceFromField = readControl(priceControl);
   let priceFromSelectors = "";
-  for (const sel of SELECTORS.listPrice) {
+  for (const sel of withRemote("listPrice", SELECTORS.listPrice)) {
     const el = doc.querySelector(sel);
-    if (el instanceof HTMLInputElement && el.value) {
+    if (el instanceof HTMLInputElement && el.value.trim()) {
       priceFromSelectors = el.value;
+      break;
+    }
+    const text = el?.textContent?.replace(/\s+/g, " ").trim() ?? "";
+    if (text && /\$?\d/.test(text)) {
+      priceFromSelectors = text;
       break;
     }
   }
