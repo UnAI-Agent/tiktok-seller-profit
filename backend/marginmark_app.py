@@ -512,11 +512,11 @@ def _set_sub(
     past_due_since: Optional[str] = None,
     tier: Optional[str] = None,
     db: Optional[Any] = None,
-) -> None:
+) -> int:
     own = db is None
     if own:
         db = get_db()
-    db.execute(
+    cur = db.execute(
         """
         INSERT INTO subscriptions
           (user_id, service, status, stripe_sub_id, past_due_since, tier)
@@ -540,9 +540,11 @@ def _set_sub(
             tier,
         ),
     )
+    written = max(int(cur.rowcount or 0), 0)
     if own:
         db.commit()
         db.close()
+    return written
 
 
 def _emit(event: str, data: Optional[dict[str, Any]] = None, *, user_id: Optional[int] = None) -> None:
@@ -1052,15 +1054,44 @@ def _stripe_value(obj: Any, key: str) -> Any:
     return getattr(obj, key, None)
 
 
+def _items_data(obj: Any) -> list:
+    items = _stripe_value(obj, "items")
+    data = _stripe_value(items, "data") if items is not None else None
+    return data if isinstance(data, list) else []
+
+
+def _period_end_unix(obj: Any) -> Optional[int]:
+    """Billing period end. API 2026-08-26.dahlia puts it on the subscription item."""
+    raw = _stripe_value(obj, "current_period_end")
+    if isinstance(raw, (int, float)):
+        return int(raw)
+    data = _items_data(obj)
+    if not data:
+        return None
+    nested = _stripe_value(data[0], "current_period_end")
+    return int(nested) if isinstance(nested, (int, float)) else None
+
+
+def _map_stripe_status(status: Optional[str]) -> str:
+    if status in ("active", "trialing"):
+        return "active"
+    if status == "past_due":
+        return "past_due"
+    return "free"
+
+
 def _subscription_still_paid(sub: Any) -> bool:
     status = _stripe_value(sub, "status")
     if status in ("active", "trialing", "past_due"):
         return True
     ends = [
         raw
-        for key in ("current_period_end", "trial_end", "cancel_at")
+        for key in ("trial_end", "cancel_at")
         if isinstance((raw := _stripe_value(sub, key)), (int, float))
     ]
+    period_end = _period_end_unix(sub)
+    if period_end is not None:
+        ends.append(period_end)
     return bool(ends) and max(ends) > time.time()
 
 
@@ -1348,17 +1379,17 @@ def _apply_subscription_event(
     mapped: str,
     past_due: Optional[str],
     db: Any,
-) -> dict[str, str]:
+) -> dict[str, Any]:
     sub_id = obj.get("id")
-    items = ((obj.get("items") or {}).get("data")) or []
-    price = (items[0].get("price") if items else {}) or {}
-    amount = price.get("unit_amount")
-    interval = (price.get("recurring") or {}).get("interval")
+    items = _items_data(obj)
+    price = _stripe_value(items[0], "price") if items else None
+    amount = _stripe_value(price, "unit_amount") if price is not None else None
+    interval = _stripe_value(_stripe_value(price, "recurring"), "interval") if price is not None else None
     stripe_status = obj.get("status")
-    period_end = obj.get("current_period_end")
+    period_end = _period_end_unix(obj)
     end_iso = (
-        datetime.fromtimestamp(int(period_end), timezone.utc).isoformat()
-        if isinstance(period_end, (int, float))
+        datetime.fromtimestamp(period_end, timezone.utc).isoformat()
+        if period_end is not None
         else None
     )
     previous = db.execute(
@@ -1367,11 +1398,12 @@ def _apply_subscription_event(
     ).fetchone()
     from tiers import tier_for_price
 
+    price_id = _stripe_value(price, "id") if price is not None else None
     next_tier = _tier_keeping_diamond(
         (previous or {}).get("tier"),
-        tier_for_price(price.get("id") if isinstance(price, dict) else None),
+        tier_for_price(str(price_id) if price_id else None),
     )
-    db.execute(
+    cur = db.execute(
         """UPDATE subscriptions
            SET status=?, past_due_since=?, amount_cents=?, interval=?, stripe_status=?, current_period_end=?, tier=?
            WHERE stripe_sub_id=?""",
@@ -1382,6 +1414,7 @@ def _apply_subscription_event(
         "to": mapped,
         "tier": next_tier,
         "interval": interval or "",
+        "rows": max(int(cur.rowcount or 0), 0),
     }
 
 
@@ -1395,6 +1428,76 @@ def invoice_subscription_id(obj: dict[str, Any]) -> Optional[str]:
     if isinstance(nested, str) and nested:
         return nested
     return None
+
+
+def _retrieve_subscription(sub_id: str) -> Optional[dict[str, Any]]:
+    if not sub_id or not STRIPE_SECRET_KEY:
+        return None
+    try:
+        remote = stripe.Subscription.retrieve(sub_id)
+    except stripe.error.StripeError:
+        logger.warning("webhook subscription retrieve failed sub=%s", sub_id)
+        return None
+    return dict(remote) if isinstance(remote, dict) else None
+
+
+def _stripe_row_canceled(db: Any, sub_id: str) -> bool:
+    row = db.execute(
+        "SELECT stripe_status FROM subscriptions WHERE stripe_sub_id=?",
+        (sub_id,),
+    ).fetchone()
+    return bool(row) and str(row["stripe_status"] or "") == "canceled"
+
+
+def _sync_subscription_event(
+    db: Any, event_type: str, payload: Any
+) -> tuple[int, str, Optional[str], Optional[dict[str, Any]], bool]:
+    """Live Stripe subscription wins. A failed lookup must not revive a cancel."""
+    if event_type.startswith("invoice."):
+        sub_id = invoice_subscription_id(payload)
+    else:
+        raw_id = payload.get("id")
+        sub_id = raw_id if isinstance(raw_id, str) else None
+    if not sub_id:
+        return 0, "-", None, None, False
+    live = _retrieve_subscription(sub_id)
+    if live is None and event_type != "customer.subscription.deleted" and _stripe_row_canceled(db, sub_id):
+        payload_status = payload.get("status") if event_type.startswith("customer.subscription.") else None
+        would_revive = event_type.startswith("invoice.") or _map_stripe_status(
+            payload_status if isinstance(payload_status, str) else None
+        ) != "free"
+        if would_revive:
+            return 0, "free", sub_id, None, False
+    if live is None and event_type in ("invoice.paid", "invoice.payment_failed"):
+        if event_type == "invoice.paid":
+            cur = db.execute(
+                "UPDATE subscriptions SET status='active', past_due_since=NULL WHERE stripe_sub_id=?",
+                (sub_id,),
+            )
+            mapped = "active"
+        else:
+            cur = db.execute(
+                "UPDATE subscriptions SET status='past_due', past_due_since=? WHERE stripe_sub_id=?",
+                (datetime.now(timezone.utc).isoformat(), sub_id),
+            )
+            mapped = "past_due"
+        written = max(int(cur.rowcount or 0), 0)
+        return written, mapped, sub_id, None, written == 0
+    source = dict(live if live is not None else payload)
+    if event_type == "customer.subscription.deleted":
+        source["id"] = sub_id
+        source["status"] = "canceled"
+    source.setdefault("id", sub_id)
+    mapped = (
+        "free"
+        if event_type == "customer.subscription.deleted"
+        else _map_stripe_status(source.get("status") if isinstance(source.get("status"), str) else None)
+    )
+    past_due = datetime.now(timezone.utc).isoformat() if mapped == "past_due" else None
+    change = _apply_subscription_event(source, mapped, past_due, db)
+    written = int(change.get("rows") or 0)
+    state = change if event_type in ("customer.subscription.updated", "customer.subscription.created") else None
+    return written, mapped, sub_id, state, written == 0
 
 
 def _mark_event(event_id: str, event_type: str, db: Optional[Any] = None) -> bool:
@@ -1430,61 +1533,65 @@ async def webhook(request: Request):
     except (ValueError, stripe.error.SignatureVerificationError) as exc:
         raise HTTPException(400, "Invalid webhook signature") from exc
     db = get_db()
-    state_change: Optional[dict[str, str]] = None
+    state_change: Optional[dict[str, Any]] = None
     committed = False
+    duplicate = False
+    event_type = "-"
+    sub_id: Optional[str] = None
+    rows = 0
+    resulting = "-"
+    warn_zero = False
     try:
-        if not _mark_event(str(event["id"]), str(event["type"]), db):
-            return {"ok": True, "duplicate": True}
-        event_type = event["type"]
-        obj = event["data"]["object"]
-        if event_type == "checkout.session.completed":
-            meta = obj.get("metadata") or {}
-            uid = meta.get("user_id") or obj.get("client_reference_id")
-            if uid:
-                from tiers import tier_for_price
+        event_type = str(event["type"])
+        if not _mark_event(str(event["id"]), event_type, db):
+            duplicate = True
+            resulting = "duplicate"
+        else:
+            obj = event["data"]["object"]
+            if event_type == "checkout.session.completed":
+                meta = obj.get("metadata") or {}
+                uid = meta.get("user_id") or obj.get("client_reference_id")
+                if uid:
+                    from tiers import tier_for_price
 
-                tier = tier_for_price(meta.get("price_id")) or meta.get("tier")
-                if tier not in ("pro", "diamond"):
-                    tier = None
-                _set_sub(int(uid), "active", obj.get("subscription"), tier=tier, db=db)
-                db.execute("UPDATE users SET trial_used=1 WHERE id=?", (int(uid),))
-        elif event_type in ("customer.subscription.updated", "customer.subscription.created"):
-            status = obj.get("status")
-            mapped = (
-                "active"
-                if status in ("active", "trialing")
-                else "past_due"
-                if status == "past_due"
-                else "free"
-            )
-            past_due = datetime.now(timezone.utc).isoformat() if mapped == "past_due" else None
-            state_change = _apply_subscription_event(obj, mapped, past_due, db)
-        elif event_type == "customer.subscription.deleted":
-            db.execute(
-                "UPDATE subscriptions SET status='free', past_due_since=NULL WHERE stripe_sub_id=?",
-                (obj.get("id"),),
-            )
-        elif event_type in ("invoice.paid", "invoice.payment_failed"):
-            sub_id = invoice_subscription_id(obj)
-            if sub_id:
-                if event_type == "invoice.paid":
-                    db.execute(
-                        "UPDATE subscriptions SET status='active', past_due_since=NULL WHERE stripe_sub_id=?",
-                        (sub_id,),
-                    )
-                else:
-                    db.execute(
-                        "UPDATE subscriptions SET status='past_due', past_due_since=? WHERE stripe_sub_id=?",
-                        (datetime.now(timezone.utc).isoformat(), sub_id),
-                    )
-        db.commit()
-        committed = True
+                    tier = tier_for_price(meta.get("price_id")) or meta.get("tier")
+                    if tier not in ("pro", "diamond"):
+                        tier = None
+                    raw_sub = obj.get("subscription")
+                    sub_id = raw_sub if isinstance(raw_sub, str) else None
+                    rows = _set_sub(int(uid), "active", sub_id, tier=tier, db=db)
+                    db.execute("UPDATE users SET trial_used=1 WHERE id=?", (int(uid),))
+                    resulting = "active"
+            elif event_type in (
+                "customer.subscription.updated",
+                "customer.subscription.created",
+                "customer.subscription.deleted",
+                "invoice.paid",
+                "invoice.payment_failed",
+            ):
+                rows, resulting, sub_id, state_change, warn_zero = _sync_subscription_event(
+                    db, event_type, obj
+                )
+            db.commit()
+            committed = True
     finally:
         if not committed:
             db.rollback()
         db.close()
+    logger.info(
+        "webhook type=%s sub=%s rows=%s status=%s",
+        event_type,
+        sub_id or "-",
+        rows,
+        resulting,
+    )
+    if warn_zero and sub_id:
+        logger.warning("webhook type=%s sub=%s matched zero rows", event_type, sub_id)
     if state_change:
+        state_change.pop("rows", None)
         _emit("subscription.state_changed", state_change)
+    if duplicate:
+        return {"ok": True, "duplicate": True}
     return {"ok": True}
 
 
@@ -1618,6 +1725,48 @@ def admin_overview(request: Request):
     ).fetchone()["n"]
     db.close()
     return {"users": users, "pro_rows": pro, "services": [SERVICE], "app_env": APP_ENV}
+
+
+@app.get("/admin/billing/stripe")
+def admin_billing_stripe(request: Request, user_id: int):
+    """Read-only: local subscription row versus the live Stripe status."""
+    require_admin(request)
+    db = get_db()
+    try:
+        user = db.execute("SELECT id FROM users WHERE id=?", (user_id,)).fetchone()
+        if not user:
+            raise HTTPException(404, "User not found")
+        sub = db.execute(
+            """SELECT status, tier, stripe_sub_id, stripe_status, interval, current_period_end
+               FROM subscriptions WHERE user_id=? AND service=?""",
+            (user_id, SERVICE),
+        ).fetchone()
+    finally:
+        db.close()
+    local = dict(sub) if sub else None
+    live_status = None
+    lookup = "skipped"
+    sub_id = (local or {}).get("stripe_sub_id")
+    if sub_id and STRIPE_SECRET_KEY:
+        try:
+            remote = stripe.Subscription.retrieve(str(sub_id))
+            live_status = _stripe_value(remote, "status")
+            lookup = "ok"
+        except stripe.error.StripeError:
+            lookup = "failed"
+    mapped = _map_stripe_status(str(live_status)) if isinstance(live_status, str) else None
+    local_status = (local or {}).get("status")
+    local_stripe = (local or {}).get("stripe_status")
+    mismatch = lookup == "failed" or (
+        mapped is not None and (mapped != local_status or local_stripe != live_status)
+    )
+    return {
+        "user_id": user_id,
+        "local": local,
+        "stripe_status": live_status,
+        "lookup": lookup,
+        "mismatch": mismatch,
+    }
 
 
 @app.get("/admin/users")

@@ -262,7 +262,8 @@ export default function ProfitOverlay({
       setTier("free");
       return;
     }
-    if (isPaidTier(accountTier)) setTier(accountTier);
+    // The cache only holds answers the API gave.
+    setTier(accountTier);
   }, [accountTier, loggedIn]);
 
   const refreshSkus = useCallback(async () => {
@@ -287,9 +288,7 @@ export default function ProfitOverlay({
       const keys = message.keys ?? [];
       if (keys.includes("skus")) void refreshSkus();
       if (keys.includes("subscription") || keys.includes("proJustUnlocked")) {
-        void readTier().then((next) => {
-          if (isPaidTier(next)) setTier(next);
-        });
+        void readTier().then((next) => setTier(next));
       }
     }
     chrome.runtime.onMessage.addListener(onPush);

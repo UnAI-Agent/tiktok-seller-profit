@@ -72,6 +72,7 @@ Add the production API origin to `manifest.json` `host_permissions` before Chrom
 
 ## Launch checklist
 
+- [ ] Have the extension logo and the Stripe logo
 - [ ] Backend `/health` returns ok over HTTPS
 - [ ] Stripe webhook receives `checkout.session.completed` within a few seconds
 - [ ] `npm test` and `npm run build` pass
