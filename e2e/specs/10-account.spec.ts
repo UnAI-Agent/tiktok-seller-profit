@@ -15,12 +15,16 @@ test("E-ACC-NAME the display name can be changed", async ({ page, harness, conte
   const { panel } = await account(page, context, extId, harness.api, harness.origin);
   await panel.getByPlaceholder("Your name").fill("Ada Seller");
   await panel.getByRole("button", { name: "Save profile" }).click();
-  await expect(panel.getByText("Ada Seller")).toBeVisible();
+  await expect(panel.getByText("Profile saved.")).toBeVisible();
+  await expect(panel.getByText("Ada Seller").first()).toBeVisible();
 });
 
 test("E-ACC-EMAIL changing the email clears verification", async ({ page, harness, context, extId }) => {
-  const { panel, user } = await account(page, context, extId, harness.api, harness.origin);
+  const { panel, address, user } = await account(page, context, extId, harness.api, harness.origin);
   await harness.api.verifyEmail(user.userId, "");
+  // Save compares against the loaded profile. Clicking before that load finishes
+  // shows "Profile saved." and the test then waits out the whole 90s.
+  await expect(panel.getByRole("textbox", { name: "Email" })).toHaveValue(address);
   const next = email();
   await panel.getByRole("textbox", { name: "Email" }).fill(next);
   await panel.getByRole("button", { name: "Save profile" }).click();
@@ -63,6 +67,7 @@ test("E-ACC-DELETE deleting the account removes the user", async ({ page, harnes
   await panel.getByRole("textbox", { name: "Password" }).last().fill(PASSWORD);
   await panel.getByRole("button", { name: "Delete my account" }).click();
   await expect(panel.getByText("Profit on this page works without an account.")).toBeVisible();
-  const rows = JSON.stringify(await harness.api.rows("users"));
-  expect(rows).not.toContain(address);
+  // Search for this email: an unfiltered first page of rows could miss it and pass anyway.
+  const found = (await harness.api.rows("users", address)) as { rows: Array<{ email: string }> };
+  expect(found.rows.filter((row) => row.email === address)).toHaveLength(0);
 });

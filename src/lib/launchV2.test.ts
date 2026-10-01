@@ -12,7 +12,6 @@ import { computeProfit } from "./profit";
 import { matchBulkRows } from "./bulkCost";
 import { leaksFoundUsd } from "./valueReceipt";
 import { newLeakIds } from "./checkin";
-import { promoGuardLine } from "./promoChip";
 
 describe("L5 providers", () => {
   it("L5_sign_in_shows_google_facebook_and_tiktok", () => {
@@ -27,9 +26,10 @@ describe("L5 providers", () => {
 describe("L8 remote config", () => {
   it("L8_killswitch_hides_feature", () => {
     const flags = bundledFlags();
-    expect(flags.productCheck.enabled).toBe(true);
-    flags.productCheck = { ...flags.productCheck, enabled: false, reason: "Paused" };
-    const hidden = evaluateFlag("productCheck", flags, {
+    const live = evaluateFlag("statementImport", flags, { tier: "pro", version: "1.3.0", installId: "install-a" });
+    expect(live.enabled).toBe(true);
+    flags.statementImport = { ...flags.statementImport, enabled: false, reason: "Paused" };
+    const hidden = evaluateFlag("statementImport", flags, {
       tier: "pro",
       version: "1.3.0",
       installId: "install-a",
@@ -138,11 +138,6 @@ describe("value and check-in", () => {
 
   it("P4_checkin_counts_new_leaks_only", () => {
     expect(newLeakIds(["a", "b"], ["b", "c", "d"])).toEqual(["c", "d"]);
-  });
-
-  it("P3_promo_chip_below_breakeven", () => {
-    expect(promoGuardLine(19.99, -1.81, 21.8)).toMatch(/lose \$1\.81/);
-    expect(promoGuardLine(19.99, -1.81, 21.8)).toMatch(/Break-even is \$21\.80/);
   });
 
   it("P3_diagnose_promo_first", () => {

@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { BrowserContext, Page } from "@playwright/test";
+import { expect, type BrowserContext, type Locator, type Page } from "@playwright/test";
 import { pythonCommand } from "../../scripts/python-cmd.mjs";
 import type { Api } from "./backend";
 
@@ -16,6 +16,12 @@ export function email(): string {
 }
 
 export const PASSWORD = "Valid-pass-1";
+
+/** Click a control that removes itself. locator.click() retries until the test timeout. */
+export async function clickLeaving(control: Locator): Promise<void> {
+  await expect(control).toBeEnabled();
+  await control.evaluate((el: HTMLElement) => el.click());
+}
 
 export async function wipeExtension(context: BrowserContext, extId: string, keep?: Page): Promise<void> {
   const keepUrl = keep?.url() ?? "";
@@ -112,10 +118,72 @@ export function signRemote(doc: unknown): unknown {
   return JSON.parse(signed);
 }
 
+/**
+ * Publish a signed config and wait until the extension caches it.
+ * Asks the worker to run the same fetch the 15-minute alarm uses, because
+ * Chrome will not fire an alarm 50ms from now.
+ */
+/** Flags as a stable string: the worker stores them with sorted keys. */
+function flagsKey(flags: unknown): string {
+  const record = (flags ?? {}) as Record<string, { enabled: boolean; rolloutPct: number }>;
+  return JSON.stringify(Object.keys(record).sort().map((key) => [key, record[key].enabled, record[key].rolloutPct]));
+}
+
+export async function pushRemoteConfig(api: Api, extPage: Page, doc: unknown): Promise<void> {
+  const want = flagsKey((doc as { flags?: unknown }).flags);
+  await api.publishConfig(signRemote(doc));
+  const deadline = Date.now() + 15_000;
+  let last = "";
+  while (Date.now() < deadline) {
+    // Chrome delays alarms shorter than ~30s, so ask the worker to fetch now.
+    // That is the same refreshRemoteConfig the 15-minute alarm runs.
+    const reply = await extPage.evaluate(() => chrome.runtime.sendMessage({ type: "REFRESH_REMOTE_CONFIG" }));
+    const cached = await extPage.evaluate(() => chrome.storage.local.get("remoteConfigCache"));
+    const flags = (cached.remoteConfigCache as { flags?: unknown } | undefined)?.flags;
+    last = `reply=${JSON.stringify(reply)} cached=${JSON.stringify(flags ?? null)}`;
+    if (flags && flagsKey(flags) === want) return;
+  }
+  throw new Error(`the extension did not cache the published config within 15s (${last})`);
+}
+
+/** Publish the bundled flags again so a kill-switch test cannot leak into later tests (the worker re-fetches on wake). */
+export async function restoreBundledConfig(api: Api): Promise<void> {
+  await api.publishConfig(signRemote(remoteDoc()));
+}
+
 export async function openSeller(page: Page, origin: string, urlPath: string): Promise<void> {
   await page.goto(`${origin}${urlPath}`);
 }
 
 export function panel(page: Page) {
   return page.locator("#tiktok-seller-tool-root");
+}
+
+/**
+ * Upgrade the way a real purchase does: Stripe's signed checkout webhook, then
+ * the seller lands on the success page (Stripe's success_url). The extension
+ * refreshes the plan on that page, so open panels unlock without a reload.
+ */
+export async function upgradeLikeStripe(api: Api, context: BrowserContext, userId: number): Promise<void> {
+  await makePro(api, userId);
+  const done = await context.newPage();
+  await done.goto("http://127.0.0.1:8000/billing/done?ok=1");
+  // Named wait: the worker refreshes on the tab's "complete" event; give it one round trip.
+  await done.waitForTimeout(1500);
+  await done.close();
+}
+
+/** Cancel the subscription the way Stripe reports it, then let the extension re-read the plan. */
+export async function cancelLikeStripe(api: Api, context: BrowserContext, userId: number): Promise<void> {
+  const res = await api.webhook("customer.subscription.deleted", {
+    id: `sub_e2e_${userId}`,
+    object: "subscription",
+    status: "canceled",
+  });
+  if (!res.ok) throw new Error(`webhook ${res.status} ${await res.text()}`);
+  // A cancel has no success page; the seller sees it on the next plan check. Force one.
+  const page = await context.newPage();
+  await page.goto("http://127.0.0.1:8000/billing/done?ok=1");
+  await page.waitForTimeout(1500);
+  await page.close();
 }

@@ -2,7 +2,7 @@ import { FEE_PRESETS, FREE_SKU_LIMIT, inferFeePreset } from "../config";
 import { canAddSku, savedCostCount } from "./skuLimit";
 import { DEFAULT_SETTINGS, SETTINGS_VERSION, TELEMETRY_CONSENT_VERSION, type Settings, type TelemetryConsent } from "../types/settings";
 import type { SkuRecord, SkuStore } from "../types/sku";
-import type { SpsSnapshot } from "./sps";
+import { isValidSpsScore, type SpsSnapshot } from "./sps";
 import { isValidSku } from "./skuValidate";
 
 export { FREE_SKU_LIMIT };
@@ -213,18 +213,18 @@ export async function removeSkuIds(ids: string[]): Promise<void> {
   if (changed) await chrome.storage.local.set({ [KEYS.skus]: store });
 }
 
-/** Only a scraped account-health score is real. Proxy seeds are hidden. */
+/** Only a score read from the seller's own Account Health page is real. Older 0–100 proxy seeds are dropped. */
 export async function getSps(): Promise<SpsSnapshot | null> {
   const data = await chrome.storage.local.get(KEYS.sps);
   const existing = data[KEYS.sps] as SpsSnapshot | undefined;
-  if (!existing || existing.source !== "native") return null;
+  if (!existing || existing.source !== "native" || !isValidSpsScore(existing.score)) return null;
   return existing;
 }
 
-export async function touchSps(): Promise<SpsSnapshot | null> {
-  const sps = await getSps();
-  if (!sps) return null;
-  const updated = { ...sps, updatedAt: new Date().toISOString() };
-  await chrome.storage.local.set({ [KEYS.sps]: updated });
-  return updated;
+/** Store a freshly read score. updatedAt only ever moves on a real read. */
+export async function saveSps(score: number, now: Date = new Date()): Promise<SpsSnapshot | null> {
+  if (!isValidSpsScore(score)) return null;
+  const snapshot: SpsSnapshot = { score: Math.round(score * 100) / 100, source: "native", updatedAt: now.toISOString() };
+  await chrome.storage.local.set({ [KEYS.sps]: snapshot });
+  return snapshot;
 }

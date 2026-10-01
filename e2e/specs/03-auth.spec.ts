@@ -31,6 +31,10 @@ test("E-AUTH-WEAK a weak password shows the strength meter and the rule", async 
   await expect(panel.getByText("3 of: A–Z, a–z, 0–9, symbol")).toBeVisible();
   await panel.getByLabel("Email").fill(email());
   await panel.getByRole("button", { name: "Create free account" }).click();
+  // The same two rules, in the same words, as security/passwords.py.
+  await expect(panel.getByText("Password must be at least 8 characters")).toBeVisible();
+  await panel.getByRole("textbox", { name: "Password" }).fill("abcdefgh");
+  await panel.getByRole("button", { name: "Create free account" }).click();
   await expect(panel.getByText("Password needs at least 3 of: uppercase, lowercase, number, special character")).toBeVisible();
 });
 
@@ -40,7 +44,7 @@ test("E-AUTH-SIGNUP sign-up shows the nav and creates the user", async ({ page, 
   await expect(panel.getByRole("button", { name: "Overview" })).toBeVisible();
   await expect(panel.getByRole("button", { name: "Products" })).toBeVisible();
   await expect(panel.getByRole("button", { name: "Settings" })).toBeVisible();
-  const rows = (await harness.api.rows("users")) as { rows?: { email: string }[] };
+  const rows = (await harness.api.rows("users", address)) as { rows?: { email: string }[] };
   const list = Array.isArray(rows) ? rows : (rows.rows ?? []);
   expect(list.some((row) => row.email === address)).toBe(true);
 });
@@ -103,6 +107,9 @@ test("E-AUTH-RESEND resend within 60 seconds is rate limited", async ({ page, ha
   const panel = await signup(page, harness.origin, address, context, extId);
   await panel.getByRole("button", { name: "Account" }).click();
   await panel.getByRole("button", { name: "Send a new code" }).click();
+  // Wait until the first send finishes. A second click in the same turn is dropped
+  // while the button is busy, so the rate-limit copy never appears.
+  await expect(panel.getByText(/New code sent|Too many requests/)).toBeVisible();
   await panel.getByRole("button", { name: "Send a new code" }).click();
   await expect(panel.getByText("Too many requests. Please wait a moment.")).toBeVisible();
 });

@@ -38,7 +38,8 @@ type AnswerProduct = {
   margin: number | null;
   verdict: string;
   hiddenProfit?: number;
-  statement?: { negative?: boolean };
+  refundAdminFee: number;
+  afterStatement: { unitsSold: number; net: number | null; margin: number | null; verdict: string };
 };
 
 type AnswerKey = {
@@ -119,10 +120,6 @@ describe("lab answer key", () => {
       const sku = skus.find((row) => row.skuId === product.skuId);
       if (!sku) throw new Error(product.key);
       const diagnosis = diagnoseSku(sku, DEFAULT_SETTINGS);
-      if (product.statement) {
-        expect(diagnosis.label).toBe("Healthy");
-        continue;
-      }
       expect(diagnosis.label).toBe(product.verdict);
       if (product.net == null) {
         expect(diagnosis.status).toBe("missing-cost");
@@ -139,6 +136,20 @@ describe("lab answer key", () => {
     expect(names.thin.sort()).toEqual([...key.overviewBeforeStatement.thin].sort());
     expect(names.healthy.sort()).toEqual([...key.overviewBeforeStatement.healthy].sort());
     expect(names.missing.sort()).toEqual([...key.overviewBeforeStatement.missing].sort());
+  });
+
+  it("charges the refund admin fee on typed costs and not after a statement", () => {
+    for (const product of key.products) {
+      const sku = toSku(product);
+      const typed = computeProfit({ ...profitInputFor(sku, DEFAULT_SETTINGS), unitsSold: 1, orderCount: 1 });
+      expect(cents(typed.refundAdminFee)).toBe(product.refundAdminFee);
+      const settled = computeProfit({
+        ...profitInputFor({ ...sku, costSource: "settlement", actualFees: { periodLabel: "x", platformFeePct: 6, refundRatePct: 3 } }, DEFAULT_SETTINGS),
+        unitsSold: 1,
+        orderCount: 1,
+      });
+      expect(settled.refundAdminFee).toBe(0);
+    }
   });
 
   it("fills units from the statement and keeps a negative fee at +8%", () => {
@@ -168,16 +179,18 @@ describe("lab answer key", () => {
       return { ...sku, netProfit: profit.netProfit, netMarginPct: profit.netMarginPct ?? 0 };
     });
     for (const product of key.products) {
-      if (product.net == null) {
-        const sku = priced.find((row) => row.skuId === product.skuId);
+      const after = product.afterStatement;
+      const sku = priced.find((row) => row.skuId === product.skuId);
+      expect(sku?.unitsSold).toBe(after.unitsSold);
+      if (after.net == null) {
         expect(sku?.costSource).toBe("default");
         expect(diagnoseSku(sku!, DEFAULT_SETTINGS).status).toBe("missing-cost");
         continue;
       }
-      const sku = priced.find((row) => row.skuId === product.skuId);
       const profit = computeProfit(profitInputFor(sku!, DEFAULT_SETTINGS));
-      expect(cents(profit.netPerUnit)).toBe(product.net);
-      expect(diagnoseSku(sku!, DEFAULT_SETTINGS).label).toBe(product.verdict);
+      expect(cents(profit.netPerUnit)).toBe(after.net);
+      expect(Number(profit.netMarginPct!.toFixed(1))).toBe(after.margin);
+      expect(diagnoseSku(sku!, DEFAULT_SETTINGS).label).toBe(after.verdict);
     }
     const names = bucketKeys(priced, keyById);
     expect(names.losing.sort()).toEqual([...key.overviewAfterStatement.losing].sort());
@@ -191,13 +204,16 @@ describe("lab answer key", () => {
     );
     expect(markup).toContain("Losing");
     expect(markup).toContain("Cut ads");
-    expect(markup).not.toContain("$48.59");
+    const hidden = key.products.find((row) => row.key === "G")?.hiddenProfit;
+    expect(hidden).toBeTypeOf("number");
+    // A product with no cost never shows a profit number, not even the default-cost guess.
+    expect(markup).not.toContain(`$${hidden!.toFixed(2)}`);
     const freeMarkup = renderToStaticMarkup(
       createElement(ProfitBoard, { skus: priced, settings: DEFAULT_SETTINGS, isPro: false }),
     );
     expect(freeMarkup).toContain("Worst product");
     expect(freeMarkup).not.toContain("Cut ads");
-    expect(freeMarkup).not.toContain("$48.59");
+    expect(freeMarkup).not.toContain(`$${hidden!.toFixed(2)}`);
   });
 });
 

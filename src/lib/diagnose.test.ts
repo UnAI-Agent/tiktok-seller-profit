@@ -109,7 +109,9 @@ describe("portfolioStats", () => {
     });
     expect(stats.losing).toBe(1);
     expect(stats.realCosts).toBe(1);
-    expect(stats.leak).toBeCloseTo(11, 1);
+    // By hand: 20 x (1 - 8% - 5%) - 9.50 - refund admin (5% x 20% x $1.60 = $0.016)
+    // - 20% commission ($4) - $5 ads = -$1.116 a sale, x 10 sales = $11.16.
+    expect(stats.leak).toBeCloseTo(11.16, 2);
     expect(stats.worstCreatorLoss?.title).toBe("Loss");
   });
 });

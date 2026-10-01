@@ -15,7 +15,6 @@ export default defineConfig({
   build: {
     rollupOptions: {
       input: {
-        popup: "index.html",
         oauthFinish: "oauth-finish.html",
       },
     },

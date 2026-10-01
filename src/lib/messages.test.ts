@@ -4,6 +4,7 @@ import { allowedApiCall, isRuntimeMessage } from "./messages";
 describe("API_CALL proxy", () => {
   it("allows checkout and blocks other paths @F-MSG", () => {
     expect(isRuntimeMessage({ type: "LOGOUT" })).toBe(true);
+    expect(isRuntimeMessage({ type: "REFRESH_REMOTE_CONFIG" })).toBe(true);
     expect(allowedApiCall("POST", "/billing/checkout")).toBe(true);
     expect(allowedApiCall("POST", "/auth/profile")).toBe(true);
     expect(allowedApiCall("POST", "/auth/change-password")).toBe(true);

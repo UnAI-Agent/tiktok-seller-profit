@@ -171,7 +171,8 @@ describe("Free vs Pro separation", () => {
     const html = render(true);
     expect(html).toContain("Raise price to");
     expect(html).toContain("Max commission");
-    expect(html).not.toContain("Export CSV");
+    // csvExport ships on; the plan picker promises CSV export to Pro.
+    expect(html).toContain("Export CSV");
     expect(html).not.toContain("data-pro-lock");
     expect(html).not.toContain("Free costs saved");
   });

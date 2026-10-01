@@ -51,11 +51,15 @@ import PlanPicker from "../../ui/PlanPicker";
 import ProLock from "../../ui/ProLock";
 import { UpgradeContext } from "../../ui/upgrade";
 import { Alert, Button, cx } from "../../ui/primitives";
-import { ChevronLeftIcon, HelpIcon, BoxIcon, ChartIcon, SettingsIcon } from "../../ui/icons";
+import { ChevronLeftIcon, HelpIcon, BoxIcon, ChartIcon, SettingsIcon, UserIcon } from "../../ui/icons";
+import CreatorBoard from "../../dashboard/CreatorBoard";
+import SpsStrip from "./SpsBadge";
+import WeeklyRecap from "./WeeklyRecap";
+import type { SpsSnapshot } from "../../lib/sps";
 import { flagEnabled } from "../activeConfig";
 import { TONE, toneForNet } from "../../ui/tone";
 
-type OverlayNav = "overview" | "products" | "settings";
+type OverlayNav = "overview" | "products" | "creators" | "settings";
 
 type OverlayView = "main" | "account" | "support" | "plans" | "auth";
 
@@ -65,15 +69,17 @@ export function shownOverlayView(view: OverlayView, loggedIn: boolean): OverlayV
   return view;
 }
 
-const NAV: Array<[OverlayNav, string]> = [
+const NAV_ALL: Array<[OverlayNav, string]> = [
   ["overview", "Overview"],
   ["products", "Products"],
+  ["creators", "Creators"],
   ["settings", "Settings"],
 ];
 
 const NAV_ICON = {
   overview: ChartIcon,
   products: BoxIcon,
+  creators: UserIcon,
   settings: SettingsIcon,
 } as const;
 
@@ -163,6 +169,7 @@ export default function ProfitOverlay({
   const [filterRequest, setFilterRequest] = useState<{ filter: ProductFilter; token: number } | null>(null);
   const [checklistDismissed, setChecklistDismissed] = useState(true);
   const [limitHit, setLimitHit] = useState(false);
+  const [sps, setSps] = useState<SpsSnapshot | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wasLoss = useRef(false);
   const lastTier = useRef<SubscriptionTier>(tier);
@@ -284,10 +291,20 @@ export default function ProfitOverlay({
     });
   }, []);
 
+  const refreshSps = useCallback(async () => {
+    const res = await sendMessage({ type: "GET_SPS" });
+    setSps(res.ok && res.sps ? res.sps : null);
+  }, []);
+
+  useEffect(() => {
+    void refreshSps();
+  }, [refreshSps]);
+
   useEffect(() => {
     function onPush(message: { type?: string; keys?: string[] }) {
       if (message?.type !== "STORAGE_PUSH") return;
       const keys = message.keys ?? [];
+      if (keys.includes("sps")) void refreshSps();
       if (keys.includes("skus")) void refreshSkus();
       if (keys.includes("subscription") || keys.includes("proJustUnlocked")) {
         void readTier().then((next) => {
@@ -297,7 +314,7 @@ export default function ProfitOverlay({
     }
     chrome.runtime.onMessage.addListener(onPush);
     return () => chrome.runtime.onMessage.removeListener(onPush);
-  }, [refreshSkus]);
+  }, [refreshSkus, refreshSps]);
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -330,17 +347,25 @@ export default function ProfitOverlay({
     };
     document.addEventListener("input", onPageEdit, true);
     document.addEventListener("change", onPageEdit, true);
-    // Named timer: overlay resync (2000ms). Also asks the worker for the plan
-    // so a webhook can unlock Pro on the open panel without a reload.
+    // Named timer: overlay resync (2000ms). Ticks read the cached plan
+    // (GET_TIER, no network). One forced check ~10s after open catches
+    // sign-out-everywhere inside the 15s window. Repeating it would blow the
+    // two-requests-a-minute cap on /auth/me.
+    let forcedSessionCheck = false;
+    let ticks = 0;
     const interval = setInterval(() => {
       resync();
-      void sendMessage({ type: "AUTH_STATUS" }).then((status) => {
+      ticks += 1;
+      const checkSession = !forcedSessionCheck && ticks >= 5;
+      if (checkSession) forcedSessionCheck = true;
+      void sendMessage(checkSession ? { type: "AUTH_STATUS", force: true } : { type: "GET_TIER" }).then((status) => {
         if (!status?.ok) {
           if (status?.error === "Extension reloaded. Refresh this tab.") {
             setBanner({ ok: false, message: status.error });
           }
           return;
         }
+        if (!status.loggedIn) return;
         if (status.tier === "free" || status.tier === "pro" || status.tier === "diamond") setTier(status.tier);
       });
     }, 2000);
@@ -363,11 +388,20 @@ export default function ProfitOverlay({
     };
   }, []);
 
+  // Set once the seller types into this product's costs. After that, a late load of the
+  // saved record (it reruns whenever settings change) must not wipe what they typed.
+  const editedSku = useRef<string | null>(null);
+  function editDraft(next: CostDraft) {
+    editedSku.current = product.skuId ?? null;
+    setDraft(next);
+  }
+
   useEffect(() => {
     let cancel = false;
     void (async () => {
       const res = await sendMessage({ type: "GET_SKUS" });
       if (cancel) return;
+      const keepTyped = Boolean(product.skuId) && editedSku.current === product.skuId;
       if (product.hints.pageMissing || !product.skuId) {
         setCostSource("default");
         setDraft(defaultsFrom(settings));
@@ -388,6 +422,7 @@ export default function ProfitOverlay({
           setListPrice((current) => (current > 0 ? current : match.listPrice));
         }
       }
+      if (keepTyped) return;
       if (match && source !== "default") {
         setDraft({
           cogsPerUnit: match.cogsPerUnit,
@@ -423,28 +458,34 @@ export default function ProfitOverlay({
     void sendMessage({ type: "REMOVE_LOCAL", keys: ["proJustUnlocked"] });
   }, []);
 
+  // Same economics as the Products tab and the board: one code path, so a product
+  // never shows two different nets. Includes the refund admin fee for typed costs.
   const input: ProfitInput = useMemo(
-    () => ({
-      listPrice,
-      unitsSold,
-      cogsPerUnit: draft.cogsPerUnit,
-      shippingOut: shippingInCost,
-      adsPerUnit: draft.adsPerUnit,
-      platformFeePct: actualFees?.platformFeePct ?? settings.platformFeePct,
-      paymentFeePct: actualFees?.paymentFeePct ?? settings.paymentFeePct,
-      paymentFixed: actualFees?.paymentFixed ?? settings.paymentFixed,
-      refundRatePct: actualFees?.refundRatePct ?? settings.refundRatePct,
-      salesTaxPct: settings.salesTaxPct,
-      packagingPerUnit: draft.packagingPerUnit,
-      affiliatePct: actualFees?.affiliatePct ?? draft.affiliatePct,
-      affiliateSharePct: actualFees?.affiliateSharePct ?? settings.affiliateSharePct,
-      samplesSent,
-      sampleUnitCost,
-      // Refund admin is not in the answer key until a settlement states it.
-      includeRefundAdminFee: false,
-      unrecoveredShipPerUnit: settings.shippingPassedToBuyer ? draft.shippingOut : 0,
-    }),
-    [listPrice, unitsSold, draft, shippingInCost, settings, actualFees, samplesSent, sampleUnitCost],
+    () =>
+      profitInputFor(
+        {
+          skuId: product.skuId || "page-sku",
+          title,
+          listPrice,
+          cogsPerUnit: draft.cogsPerUnit,
+          shippingOut: draft.shippingOut,
+          adsPerUnit: draft.adsPerUnit,
+          unitsSold,
+          refundRatePct: settings.refundRatePct,
+          netMarginPct: 0,
+          netProfit: 0,
+          sourceUrl: "",
+          updatedAt: "",
+          packagingPerUnit: draft.packagingPerUnit,
+          affiliatePct: draft.affiliatePct,
+          costSource: actualFees ? "settlement" : costSource,
+          samplesSent,
+          sampleUnitCost,
+          actualFees,
+        },
+        settings,
+      ),
+    [product.skuId, title, listPrice, unitsSold, draft, settings, actualFees, costSource, samplesSent, sampleUnitCost],
   );
 
   const result = useMemo(() => computeProfit(input), [input]);
@@ -471,20 +512,43 @@ export default function ProfitOverlay({
         }
       : undefined;
   const costsSaved = skus.filter((sku) => (sku.costSource ?? "default") !== "default").length;
+  const flagTier = tier === "diamond" ? "diamond" : isPaidTier(tier) ? "pro" : "free";
+  const creatorsOn = flagEnabled("creatorProfit", flagTier);
+  // Kill switch for the chip MarginMark puts next to TikTok's own price field.
+  const priceChipOn = flagEnabled("promoGuard", flagTier);
+  const nav = NAV_ALL.filter(([id]) => id !== "creators" || creatorsOn);
+  // Value before the paywall: what MarginMark already found in this seller's own numbers.
+  const receipt =
+    stats.losing > 0
+      ? stats.leak > 0
+        ? `MarginMark already found ${formatUsd(stats.leak)} lost on ${stats.losing} product${stats.losing === 1 ? "" : "s"}. Pro shows the fix${stats.losing === 1 ? "" : " for each"}.`
+        : stats.losing === 1
+          ? "1 of your products loses money on every sale. Pro shows the fix."
+          : `${stats.losing} of your products lose money on every sale. Pro shows the fix for each.`
+      : null;
 
   useEffect(() => {
     const loss = guard.kind === "loss";
     if (loss && !wasLoss.current) {
+      trackEvent("promo_guard.shown", { promo: listPriceOriginal != null && listPriceOriginal > listPrice });
       setPulse(true);
       const timer = window.setTimeout(() => setPulse(false), 1200);
       wasLoss.current = true;
       return () => window.clearTimeout(timer);
     }
     if (!loss) wasLoss.current = false;
-  }, [guard]);
+  }, [guard, listPrice, listPriceOriginal]);
+
+  // Counted once per panel: the free seller saw MarginMark's dollar finding before the paywall.
+  const receiptSeen = useRef(false);
+  useEffect(() => {
+    if (!receipt || isPro || !(limitHit || tab === "products") || receiptSeen.current) return;
+    receiptSeen.current = true;
+    trackEvent("value_receipt.viewed", { losing: stats.losing, hasLeak: stats.leak > 0, placement: limitHit ? "limit" : "products" });
+  }, [receipt, isPro, limitHit, tab, stats.losing, stats.leak]);
 
   useEffect(() => {
-    if (!priceKnown) {
+    if (!priceKnown || !priceChipOn) {
       clearPriceGuardChip();
       return;
     }
@@ -492,7 +556,7 @@ export default function ProfitOverlay({
     const toneChip = guard.kind === "loss" ? "red" : guard.kind === "below-target" && isPro ? "amber" : null;
     syncPriceGuardChip(text, toneChip);
     return () => clearPriceGuardChip();
-  }, [guard, isPro, priceKnown, listPrice]);
+  }, [guard, isPro, priceKnown, listPrice, priceChipOn]);
 
   async function persistCollapsed(next: boolean) {
     setCollapsed(next);
@@ -557,12 +621,43 @@ export default function ProfitOverlay({
     }
   }
 
+  // The latest persistCosts (it reads current state), for the flush below.
+  const persistRef = useRef(persistCosts);
+  persistRef.current = persistCosts;
+  const pendingSave = useRef<CostDraft | null>(null);
+
   function scheduleSave(next: CostDraft) {
     if (saveTimer.current) clearTimeout(saveTimer.current);
+    pendingSave.current = next;
+    // Don't show "Saved" for an edit that hasn't been written yet.
+    setSaved(false);
     saveTimer.current = setTimeout(() => {
+      pendingSave.current = null;
       void persistCosts(next);
     }, 400);
   }
+
+  // A seller who types a cost and leaves (closes the panel, the tab, or Seller Center
+  // navigates) inside the 400ms debounce must not lose the edit.
+  useEffect(() => {
+    const flush = () => {
+      const next = pendingSave.current;
+      if (!next) return;
+      pendingSave.current = null;
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      void persistRef.current(next);
+    };
+    const onHidden = () => {
+      if (document.visibilityState === "hidden") flush();
+    };
+    window.addEventListener("pagehide", flush);
+    document.addEventListener("visibilitychange", onHidden);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      document.removeEventListener("visibilitychange", onHidden);
+      flush();
+    };
+  }, []);
 
   async function addSample() {
     const next = samplesSent + 1;
@@ -622,9 +717,18 @@ export default function ProfitOverlay({
     <FirstRunChecklist
       productCount={skus.length}
       costsSaved={costsSaved}
-      onAddCosts={() => openProducts("missing-cost")}
-      onSeeLosers={() => openProducts("losing")}
-      onDismiss={() => void dismissChecklist()}
+      onAddCosts={() => {
+        trackEvent("onboarding.step", { step: "add-costs" });
+        openProducts("missing-cost");
+      }}
+      onSeeLosers={() => {
+        trackEvent("onboarding.step", { step: "see-losers" });
+        openProducts("losing");
+      }}
+      onDismiss={() => {
+        trackEvent("onboarding.step", { step: "dismissed" });
+        void dismissChecklist();
+      }}
     />
   );
   const netTone = TONE[toneForNet(result.netPerUnit, priceKnown && !needsCost)];
@@ -668,7 +772,7 @@ export default function ProfitOverlay({
   return (
     <UpgradeContext.Provider value={openUpgrade}>
       <div
-        className="max-h-[620px] w-[400px] overflow-y-auto overflow-x-hidden rounded-2xl border border-slate-200 bg-white text-slate-900 shadow-2xl tabular-nums"
+        className="max-h-[min(620px,calc(100vh-32px))] w-[400px] overflow-y-auto overflow-x-hidden rounded-2xl border border-slate-200 bg-white text-slate-900 shadow-2xl tabular-nums"
         onPointerDown={(e) => e.stopPropagation()}
       >
         {LLE_TEST_BANNER ? (
@@ -686,6 +790,7 @@ export default function ProfitOverlay({
 
         {shownView === "account" && loggedIn && (
           <ProfilePanel
+            defaultEmail={userEmail ?? ""}
             costsSaved={costsSaved}
             onClose={() => setView("main")}
             onLogout={() => {
@@ -778,7 +883,7 @@ export default function ProfitOverlay({
                   ? {
                       onCommit: (value) => {
                         const next = { ...draft, cogsPerUnit: value };
-                        setDraft(next);
+                        editDraft(next);
                         void persistCosts(next);
                       },
                     }
@@ -806,9 +911,11 @@ export default function ProfitOverlay({
 
             {!loggedIn && <OverlayAuth onOpen={openAuth} />}
 
+            <SpsStrip sps={sps} showHint={loggedIn && pageType === "productList" && tab === "overview"} />
+
             {loggedIn && (
               <nav className="flex gap-1 border-b border-slate-100 px-3 py-2" aria-label="MarginMark sections">
-                {NAV.map(([id, label]) => {
+                {nav.map(([id, label]) => {
                   const Icon = NAV_ICON[id];
                   const active = tab === id;
                   return (
@@ -876,6 +983,7 @@ export default function ProfitOverlay({
                   <div className="mx-4">
                     <Alert tone="warning">
                       You've used all your free product costs. <button type="button" className="font-bold underline" onClick={() => openUpgrade("limit")}>Unlock unlimited</button>
+                      {receipt && <span className="mt-1 block font-normal">{receipt}</span>}
                     </Alert>
                   </div>
                 )}
@@ -886,9 +994,9 @@ export default function ProfitOverlay({
                     costSource={costSource}
                     periodLabel={actualFees?.periodLabel}
                     saved={saved}
-                    onChange={setDraft}
+                    onChange={editDraft}
                     onBlur={(next) => {
-                      setDraft(next);
+                      editDraft(next);
                       scheduleSave(next);
                     }}
                     onHelp={(topic) => setHelp(topic)}
@@ -932,7 +1040,7 @@ export default function ProfitOverlay({
                       affiliatePct={input.affiliatePct ?? 0}
                       affiliateSharePct={input.affiliateSharePct ?? 0}
                     />
-                    {isPro && flagEnabled("whatIf", tier === "diamond" ? "diamond" : "pro") && (
+                    {isPro && flagEnabled("whatIf", flagTier) && (
                       <WhatIfPanel
                         key={`${listPrice}-${draft.affiliatePct}-${draft.adsPerUnit}`}
                         base={input}
@@ -954,6 +1062,10 @@ export default function ProfitOverlay({
 
             {loggedIn && tab === "overview" && singleProductPage && showChecklist && !needsCost && (
               <div className="pb-3">{checklist}</div>
+            )}
+
+            {loggedIn && tab === "overview" && !singleProductPage && (
+              <WeeklyRecap skus={skus} settings={settings} isPro={isPro} />
             )}
 
             {pageType === "productList" && tab === "overview" && (
@@ -990,6 +1102,12 @@ export default function ProfitOverlay({
                   filterRequest={filterRequest}
                   onHelp={(topic) => setHelp(topic)}
                 />
+              </div>
+            )}
+
+            {loggedIn && tab === "creators" && creatorsOn && (
+              <div className="px-4 py-3">
+                <CreatorBoard skus={skus} settings={settings} isPro={isPro} />
               </div>
             )}
 

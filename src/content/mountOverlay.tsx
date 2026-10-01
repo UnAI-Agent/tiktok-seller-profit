@@ -24,6 +24,8 @@ let reactRoot: Root | null = null;
 let hostEl: HTMLDivElement | null = null;
 let lastSettings: Settings | null = null;
 let authPanelForced = false;
+/** Bumped on every close so a refresh that started earlier cannot reopen the panel. */
+let renderGen = 0;
 
 export function positionHost(
   el: HTMLElement,
@@ -127,6 +129,7 @@ function injectStyles(shadow: ShadowRoot) {
 }
 
 async function renderOverlay(settings: Settings) {
+  const gen = ++renderGen;
   if (hostEl && !hostEl.isConnected) {
     reactRoot?.unmount();
     reactRoot = null;
@@ -134,6 +137,7 @@ async function renderOverlay(settings: Settings) {
   }
   lastSettings = settings;
   const status = await sendMessage({ type: "AUTH_STATUS" });
+  if (gen !== renderGen) return;
   const loggedIn = Boolean(status.ok && status.loggedIn);
   const reportedTier = status.ok ? status.tier : undefined;
   const accountTier = reportedTier === "pro" || reportedTier === "diamond" ? reportedTier : "free";
@@ -146,14 +150,24 @@ async function renderOverlay(settings: Settings) {
 
   const collapsed = loggedIn && settings.overlayCollapsed && !authPanelForced;
   await applyRemoteSelectors();
+  if (gen !== renderGen) return;
   const product = parseProductPage();
   const dragStored = await sendMessage({ type: "GET_LOCAL", keys: ["overlayDrag"] });
+  if (gen !== renderGen) return;
   const drag = (dragStored.ok ? dragStored.local?.overlayDrag : undefined) as
     | { x: number; y: number }
     | undefined;
 
+  // A config refresh can still be awaiting here after the seller closed the panel.
+  // Recreating the host would undo that close. Check again immediately before
+  // the node is inserted: another content-script world does not share renderGen.
+  if (!authPanelForced && isOverlayDismissedForTab()) {
+    unmountOverlay();
+    return;
+  }
+
   if (!hostEl) {
-    document.getElementById(HOST_ID)?.remove();
+    document.querySelectorAll(`#${HOST_ID}`).forEach((node) => node.remove());
     hostEl = document.createElement("div");
     hostEl.id = HOST_ID;
     positionHost(hostEl, settings, collapsed, drag);
@@ -163,6 +177,11 @@ async function renderOverlay(settings: Settings) {
     mount.style.pointerEvents = "auto";
     shadow.appendChild(mount);
     hostEl.style.pointerEvents = "none";
+    if (!authPanelForced && isOverlayDismissedForTab()) {
+      hostEl = null;
+      reactRoot = null;
+      return;
+    }
     document.body.appendChild(hostEl);
     reactRoot = createRoot(mount);
   } else {
@@ -211,41 +230,59 @@ async function renderOverlay(settings: Settings) {
 }
 
 export function unmountOverlay() {
+  renderGen += 1;
   reactRoot?.unmount();
   reactRoot = null;
   hostEl?.remove();
   hostEl = null;
 }
 
-async function applyRemoteSelectors(): Promise<void> {
+/** Verified remote config: feature flags, plus CSS selectors that fix scraping without a store update. */
+export async function applyRemoteSelectors(): Promise<void> {
   const res = await sendMessage({ type: "GET_LOCAL", keys: ["remoteConfigCache"] });
   const raw = res.ok ? res.local?.remoteConfigCache : null;
   const accepted = await acceptPublishedConfig(raw, null, Date.now());
   setActiveRemoteConfig(accepted);
-  const fields = accepted?.selectors?.["product-edit"]?.fields ?? {};
   const map: Record<string, string> = {};
-  for (const [field, spec] of Object.entries(fields)) {
-    if (spec.css && !spec.css.trim().toLowerCase().startsWith("javascript:")) map[field] = spec.css;
+  for (const surface of ["account-health", "product-edit"] as const) {
+    const fields = accepted?.selectors?.[surface]?.fields ?? {};
+    for (const [field, spec] of Object.entries(fields)) {
+      if (spec.css && !spec.css.trim().toLowerCase().startsWith("javascript:")) map[field] = spec.css;
+    }
   }
   setRemoteCss(map);
 }
 
 export async function mountOverlayFromSettings() {
-  const res = await sendMessage({ type: "GET_SETTINGS" });
+  let res = await sendMessage({ type: "GET_SETTINGS" });
+  for (let attempt = 0; !res.ok && attempt < 8; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    res = await sendMessage({ type: "GET_SETTINGS" });
+  }
   if (!res.ok || !res.settings) return;
   await renderOverlay(res.settings);
 }
 
 export async function toggleInPagePanel() {
-  if (hostEl) {
+  const root = document.documentElement;
+  const closedAt = Number(root.dataset.mmClosedAt || 0);
+  const host = document.querySelector(`#${HOST_ID}`);
+  // Two content-script worlds can both receive this message. The second one
+  // must not open a panel the first one just closed.
+  if (host || Date.now() - closedAt < 200) {
+    root.dataset.mmClosedAt = String(Date.now());
+    const existing = hostEl?.isConnected ? hostEl : (host as HTMLDivElement | null);
+    if (existing) hostEl = existing;
     authPanelForced = false;
     dismissOverlayForTab();
     unmountOverlay();
-    return;
+    document.querySelectorAll(`#${HOST_ID}`).forEach((node) => node.remove());
+    return { closed: true };
   }
   authPanelForced = true;
   clearOverlayDismissForTab();
   await mountOverlayFromSettings();
+  return { closed: false };
 }
 
 export async function showInPagePanel() {

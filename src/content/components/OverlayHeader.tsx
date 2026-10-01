@@ -7,6 +7,7 @@ import { TONE, type Tone } from "../../ui/tone";
 import { HoverTip } from "./FieldHelp";
 import MarkLogo from "./MarkLogo";
 import { guardCopy } from "./PriceGuardBanner";
+import { portfolioHeadline } from "../scraper/detectPageType";
 
 export type PortfolioSummary = {
   count: number;
@@ -159,7 +160,7 @@ function PortfolioHero({ portfolio, label }: { portfolio?: PortfolioSummary; lab
   let headline = `${count} product${count === 1 ? "" : "s"} on this page`;
   let detail = "Add a cost to each product to see who makes money.";
   if (count > 0 && missing === count) {
-    headline = `${count} products · ${missing} missing costs`;
+    headline = portfolioHeadline(count, missing);
   }
   if (count > 0 && priced > 0) {
     if (losing > 0) {
@@ -242,7 +243,11 @@ export default function OverlayHeader({
           </div>
 
           {known ? (
-            <p className={cx("mt-0.5 text-3xl font-extrabold leading-none tabular-nums tracking-tight", TONE[heroTone].text)}>
+            <p
+              className={cx("mt-0.5 text-3xl font-extrabold leading-none tabular-nums tracking-tight", TONE[heroTone].text)}
+              data-testid="hero-net"
+              data-net={netPerUnit.toFixed(2)}
+            >
               {formatSignedUsd(netPerUnit)}
             </p>
           ) : priceKnown ? (

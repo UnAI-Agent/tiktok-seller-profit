@@ -9,7 +9,9 @@ export type RuntimeMessage =
   | { type: "SAVE_SKU"; sku: SkuRecord }
   | { type: "GET_SKUS" }
   | { type: "GET_SPS" }
+  | { type: "SAVE_SPS"; score: number }
   | { type: "REFRESH_OVERLAY" }
+  | { type: "REFRESH_REMOTE_CONFIG" }
   | { type: "SYNC_SKUS"; skus: SkuRecord[] }
   | { type: "REMOVE_SKUS"; skuIds: string[] }
   | { type: "SYNC_ACTIVE_TAB"; tabId: number }
@@ -23,7 +25,8 @@ export type RuntimeMessage =
   | { type: "API_CALL"; method: "GET" | "POST"; path: string; body?: string }
   | { type: "AUTH_LOGIN" | "AUTH_REGISTER"; email: string; password: string }
   | { type: "AUTH_FORGOT"; email: string }
-  | { type: "AUTH_STATUS" }
+  | { type: "AUTH_STATUS"; force?: boolean }
+  | { type: "CHECKOUT_STARTED" }
   | { type: "GET_TIER" }
   | { type: "GET_LOCAL"; keys: string[] }
   | { type: "SET_LOCAL"; values: Record<string, unknown> }
@@ -53,6 +56,10 @@ const LOCAL_KEYS = new Set([
   "statementMapping",
   "firstRun",
   "remoteConfigCache",
+  "creatorOrders",
+  "creatorMapping",
+  "weeklySnapshots",
+  "recapSeenWeek",
 ]);
 
 export function allowedLocalKeys(keys: unknown): keys is string[] {
@@ -60,12 +67,13 @@ export function allowedLocalKeys(keys: unknown): keys is string[] {
 }
 
 const SIMPLE_MESSAGES = new Set([
-  "AUTH_STATUS",
+  "CHECKOUT_STARTED",
   "GET_TIER",
   "GET_SETTINGS",
   "GET_SKUS",
   "GET_SPS",
   "REFRESH_OVERLAY",
+  "REFRESH_REMOTE_CONFIG",
   "OAUTH_FINISHED",
   "SCAN_OAUTH",
   "LOGOUT",
@@ -116,6 +124,10 @@ export function isRuntimeMessage(value: unknown): value is RuntimeMessage {
   if (typeof message.type !== "string") return false;
   if (SIMPLE_MESSAGES.has(message.type)) return true;
   switch (message.type) {
+    case "AUTH_STATUS":
+      return message.force === undefined || typeof message.force === "boolean";
+    case "SAVE_SPS":
+      return typeof message.score === "number" && Number.isFinite(message.score) && message.score >= 0 && message.score <= 5;
     case "SAVE_SETTINGS": {
       if (!message.settings || typeof message.settings !== "object") return false;
       return Object.values(message.settings).every(

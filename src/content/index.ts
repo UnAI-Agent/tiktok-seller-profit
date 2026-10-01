@@ -8,6 +8,7 @@ import {
   autoSyncSkusFromPage,
   watchSellerPagesForAutoSync,
 } from "./syncPageSkus";
+import { watchSpsOnPage } from "./spsWatch";
 
 function debounceRoute(fn: () => void, ms: number) {
   let t: ReturnType<typeof setTimeout> | undefined;
@@ -24,14 +25,21 @@ function hookSpaNavigation(onRoute: () => void) {
   window.addEventListener("popstate", debounced);
 }
 
+const pageWindow = window as Window & { __mmContent?: boolean };
+if (pageWindow.__mmContent) {
+  /* A second injection must not open another panel or steal the toggle. */
+} else {
+  pageWindow.__mmContent = true;
 try {
   watchOverlaySettings();
   watchSellerPagesForAutoSync();
   hookSpaNavigation(() => {
     void mountOverlayFromSettings();
     void autoSyncSkusFromPage(false);
+    watchSpsOnPage();
   });
   void mountOverlayFromSettings();
+  watchSpsOnPage();
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") void mountOverlayFromSettings();
   });
@@ -47,10 +55,10 @@ try {
       });
       return true;
     }
-    if (msg.type === "TOGGLE_INPAGE_PANEL") {
-      void toggleInPagePanel().then(() => sendResponse({ ok: true }));
-      return true;
-    }
+  if (msg.type === "TOGGLE_INPAGE_PANEL") {
+    void toggleInPagePanel().then((detail) => sendResponse({ ok: true, ...detail }));
+    return true;
+  }
     if (msg.type === "SHOW_INPAGE_PANEL") {
       void showInPagePanel().then((detail) => sendResponse({ ok: true, ...detail }));
       return true;
@@ -59,4 +67,5 @@ try {
   });
 } catch (err) {
   console.error("[MarginMark] content script failed", err);
+}
 }

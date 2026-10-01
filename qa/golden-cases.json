@@ -822,6 +822,96 @@
     "roasCreatorBreakEven": null,
     "roasCreatorTarget": null
    }
+  },
+  {
+   "name": "refund_admin_fee_typical",
+   "input": {
+    "price": 25,
+    "cogs": 8,
+    "shippingPassedToBuyer": true,
+    "shipLabel": 0,
+    "packaging": 0.5,
+    "platformFeePct": 6,
+    "paymentFeePct": 0,
+    "paymentFixed": 0,
+    "refundRatePct": 3,
+    "salesTaxPct": 0,
+    "affiliatePct": 10,
+    "affiliateSharePct": 100,
+    "adsPerUnit": 0,
+    "targetMarginPct": 15,
+    "samplesSent": 0,
+    "sampleUnitCost": 0,
+    "unitsSold": 100,
+    "includeRefundAdminFee": true
+   },
+   "expected": {
+    "fixedPerUnit": 8.509,
+    "contribution": 14.241,
+    "netBlended": 11.741,
+    "marginBlendedPct": 46.964,
+    "breakEvenPrice": 10.5049
+   }
+  },
+  {
+   "name": "refund_admin_fee_hits_5_cap",
+   "input": {
+    "price": 500,
+    "cogs": 200,
+    "shippingPassedToBuyer": true,
+    "shipLabel": 0,
+    "packaging": 0.5,
+    "platformFeePct": 8,
+    "paymentFeePct": 0,
+    "paymentFixed": 0,
+    "refundRatePct": 3,
+    "salesTaxPct": 0,
+    "affiliatePct": 10,
+    "affiliateSharePct": 100,
+    "adsPerUnit": 0,
+    "targetMarginPct": 15,
+    "samplesSent": 0,
+    "sampleUnitCost": 0,
+    "unitsSold": 100,
+    "includeRefundAdminFee": true
+   },
+   "expected": {
+    "fixedPerUnit": 200.65,
+    "contribution": 244.35,
+    "netBlended": 194.35,
+    "marginBlendedPct": 38.87,
+    "breakEvenPrice": 253.9873
+   }
+  },
+  {
+   "name": "refund_admin_fee_unrecovered_label",
+   "input": {
+    "price": 25,
+    "cogs": 8,
+    "shippingPassedToBuyer": true,
+    "shipLabel": 4,
+    "packaging": 0.5,
+    "platformFeePct": 6,
+    "paymentFeePct": 0,
+    "paymentFixed": 0,
+    "refundRatePct": 5,
+    "salesTaxPct": 0,
+    "affiliatePct": 10,
+    "affiliateSharePct": 100,
+    "adsPerUnit": 0,
+    "targetMarginPct": 15,
+    "samplesSent": 0,
+    "sampleUnitCost": 0,
+    "unitsSold": 100,
+    "includeRefundAdminFee": true
+   },
+   "expected": {
+    "fixedPerUnit": 8.715,
+    "contribution": 13.535,
+    "netBlended": 11.035,
+    "marginBlendedPct": 44.14,
+    "breakEvenPrice": 11.0316
+   }
   }
  ]
 }

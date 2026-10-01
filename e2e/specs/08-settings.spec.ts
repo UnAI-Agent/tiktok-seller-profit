@@ -1,6 +1,6 @@
 import { computeProfit, formatSignedUsd } from "../../src/lib/profit";
 import { expect, test } from "../support/fixtures";
-import { email, seedToken } from "../support/session";
+import { clickLeaving, email, seedToken } from "../support/session";
 
 async function loggedIn(page: import("@playwright/test").Page, context: import("@playwright/test").BrowserContext, extId: string, api: import("../support/backend").Api, origin: string) {
   const user = await api.registerApi(email());
@@ -8,7 +8,7 @@ async function loggedIn(page: import("@playwright/test").Page, context: import("
   await page.goto(`${origin}/product/edit/1732672081725400001`);
   const panel = page.locator("#tiktok-seller-tool-root");
   await panel.locator("#mm-hero-cost").fill("8");
-  await panel.getByRole("button", { name: "See my profit" }).click();
+  await clickLeaving(panel.getByRole("button", { name: "See my profit" }));
   await panel.getByRole("button", { name: "Settings" }).click();
   return panel;
 }
@@ -22,6 +22,7 @@ test("E-SET-PRESETS fee presets change the net by the engine amount", async ({ p
     listPrice: 39.99, unitsSold: 0, cogsPerUnit: 8, shippingOut: 0, adsPerUnit: 0,
     platformFeePct: 5, paymentFeePct: 0, paymentFixed: 0, refundRatePct: 3,
     packagingPerUnit: 0, affiliatePct: 10, affiliateSharePct: 100,
+    includeRefundAdminFee: true,
   });
   await expect(panel.getByText(formatSignedUsd(jewelry.netPerUnit)).first()).toBeVisible();
 });
@@ -57,6 +58,7 @@ test("E-SET-SHIPPING the shipping toggle shows the field and changes the net", a
     listPrice: 39.99, unitsSold: 0, cogsPerUnit: 8, shippingOut: 4, adsPerUnit: 0,
     platformFeePct: 6, paymentFeePct: 0, paymentFixed: 0, refundRatePct: 3,
     packagingPerUnit: 0, affiliatePct: 10, affiliateSharePct: 100,
+    includeRefundAdminFee: true,
   });
   await expect(panel.getByText(formatSignedUsd(result.netPerUnit)).first()).toBeVisible();
 });

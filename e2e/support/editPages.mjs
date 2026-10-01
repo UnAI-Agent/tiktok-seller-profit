@@ -63,3 +63,17 @@ export function withSaveHtml() {
     `<button style="position:fixed;right:16px;bottom:16px">Save</button></body>`,
   );
 }
+
+/** Account Health with a Shop Performance Score card, shaped like Seller Center's. */
+export function accountHealthHtml(score) {
+  const value = score == null ? "Not enough orders yet (12/30)" : String(score);
+  return `<!doctype html><html><head><title>Account health</title></head><body>
+  <h1>Account health</h1>
+  <section class="health-card">
+    <div class="card-title"><span>Shop Performance Score</span><span class="tip">?</span></div>
+    <div class="score-value">${value}</div>
+    <div class="sub">Last 60 days · 97% on-time dispatch · 0.4% cancellations</div>
+  </section>
+  <section class="health-card"><div class="card-title"><span>Violations</span></div><div>0 points</div></section>
+</body></html>`;
+}

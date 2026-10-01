@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "../support/fixtures";
-import { email, makePro, seedToken } from "../support/session";
+import { cancelLikeStripe, clickLeaving, email, makePro, seedToken, upgradeLikeStripe } from "../support/session";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const tiers = JSON.parse(readFileSync(path.join(root, "src", "tiers.json"), "utf8")) as {
@@ -10,9 +10,14 @@ const tiers = JSON.parse(readFileSync(path.join(root, "src", "tiers.json"), "utf
   pro: { monthlyUsd: number; yearlyUsd: number; trialDays: number };
 };
 
-async function freeUser(api: import("../support/backend").Api, context: import("@playwright/test").BrowserContext, extId: string) {
+async function freeUser(
+  api: import("../support/backend").Api,
+  context: import("@playwright/test").BrowserContext,
+  extId: string,
+  keep?: import("@playwright/test").Page,
+) {
   const user = await api.registerApi(email());
-  await seedToken(context, extId, user.token);
+  await seedToken(context, extId, user.token, keep);
   return user;
 }
 
@@ -24,12 +29,12 @@ test("E-LIMIT-6TH the sixth saved cost hits the free limit", async ({ page, harn
   for (let i = 0; i < 5; i += 1) {
     await page.goto(`${harness.origin}/product/edit/${products[i].skuId}`);
     await panel.locator("#mm-hero-cost").fill("3");
-    await panel.getByRole("button", { name: "See my profit" }).click();
+    await clickLeaving(panel.getByRole("button", { name: "See my profit" }));
     await expect(panel.getByText("Saved")).toBeVisible();
   }
   await page.goto(`${harness.origin}/product/edit/${products[5].skuId}`);
   await panel.locator("#mm-hero-cost").fill("3");
-  await panel.getByRole("button", { name: "See my profit" }).click();
+  await clickLeaving(panel.getByRole("button", { name: "See my profit" }));
   await expect(panel.getByText("You've used all your free product costs.")).toBeVisible();
 });
 
@@ -40,12 +45,12 @@ test("E-LIMIT-UNLOCK unlock unlimited opens the plans view", async ({ page, harn
   for (let i = 0; i < 5; i += 1) {
     await page.goto(`${harness.origin}/product/edit/${products[i].skuId}`);
     await panel.locator("#mm-hero-cost").fill("3");
-    await panel.getByRole("button", { name: "See my profit" }).click();
+    await clickLeaving(panel.getByRole("button", { name: "See my profit" }));
     await expect(panel.getByText("Saved")).toBeVisible();
   }
   await page.goto(`${harness.origin}/product/edit/${products[5].skuId}`);
   await panel.locator("#mm-hero-cost").fill("3");
-  await panel.getByRole("button", { name: "See my profit" }).click();
+  await clickLeaving(panel.getByRole("button", { name: "See my profit" }));
   await panel.getByRole("button", { name: "Unlock unlimited" }).click();
   await expect(panel.getByText(`$${tiers.pro.monthlyUsd}`)).toBeVisible();
 });
@@ -57,13 +62,15 @@ test("E-LIMIT-AFTER-UPGRADE the sixth save succeeds after upgrading", async ({ p
   for (let i = 0; i < 5; i += 1) {
     await page.goto(`${harness.origin}/product/edit/${products[i].skuId}`);
     await panel.locator("#mm-hero-cost").fill("3");
-    await panel.getByRole("button", { name: "See my profit" }).click();
+    await clickLeaving(panel.getByRole("button", { name: "See my profit" }));
     await expect(panel.getByText("Saved")).toBeVisible();
   }
-  await makePro(harness.api, user.userId);
+  // Real purchase: webhook, then Stripe's success page. No reload of the seller tab.
+  await upgradeLikeStripe(harness.api, context, user.userId);
   await page.goto(`${harness.origin}/product/edit/${products[5].skuId}`);
+  await expect(panel.getByText("PRO", { exact: true })).toBeVisible();
   await panel.locator("#mm-hero-cost").fill("3");
-  await panel.getByRole("button", { name: "See my profit" }).click();
+  await clickLeaving(panel.getByRole("button", { name: "See my profit" }));
   await expect(panel.getByText("Saved")).toBeVisible();
   await expect(panel.getByText("You've used all your free product costs.")).toHaveCount(0);
 });
@@ -104,15 +111,17 @@ test("E-BILL-503-UI checkout without Stripe shows the friendly message", async (
   await expect(panel.getByText("Billing is not configured. Nothing was charged.")).toBeVisible();
 });
 
-test("E-BILL-PRO-LIVE a signed checkout unlocks Pro on the open overlay", async ({ page, harness, context, extId }) => {
+test("E-BILL-PRO-LIVE a real purchase unlocks Pro on the open overlay without a reload", async ({ page, harness, context, extId }) => {
   const user = await freeUser(harness.api, context, extId);
   await harness.api.verifyEmail(user.userId, "");
   await page.goto(`${harness.origin}/product/edit/1732672081725400001`);
   const panel = page.locator("#tiktok-seller-tool-root");
   await panel.locator("#mm-hero-cost").fill("8");
-  await panel.getByRole("button", { name: "See my profit" }).click();
+  await clickLeaving(panel.getByRole("button", { name: "See my profit" }));
   await expect(panel.getByText("Max commission & ad limits")).toBeVisible();
-  await makePro(harness.api, user.userId);
+  // Webhook, then Stripe sends the seller to the success page in another tab.
+  await upgradeLikeStripe(harness.api, context, user.userId);
+  await page.bringToFront();
   await expect(panel.getByText("Pro unlocked. Every lock is open.")).toBeVisible();
   await expect(panel.getByText("Max commission & ad limits")).toHaveCount(0);
   await expect(panel.getByRole("button", { name: "+1 free sample sent" })).toBeVisible();
@@ -124,76 +133,91 @@ test("E-BILL-SAMPLE the free-sample button increments and persists", async ({ pa
   await page.goto(`${harness.origin}/product/edit/1732672081725400001`);
   const panel = page.locator("#tiktok-seller-tool-root");
   await panel.locator("#mm-hero-cost").fill("8");
-  await panel.getByRole("button", { name: "See my profit" }).click();
+  await clickLeaving(panel.getByRole("button", { name: "See my profit" }));
   await panel.getByRole("button", { name: "+1 free sample sent" }).click();
   await expect(panel.getByRole("button", { name: "+1 free sample sent (1)" })).toBeVisible();
   await page.reload();
   await expect(panel.getByRole("button", { name: "+1 free sample sent (1)" })).toBeVisible();
 });
 
-test("E-BILL-GRACE a failed invoice keeps Pro", async ({ page, harness, context, extId }) => {
+test("E-BILL-GRACE a failed invoice keeps Pro during the 3-day grace", async ({ page, harness, context, extId }) => {
   const user = await freeUser(harness.api, context, extId);
-  await makePro(harness.api, user.userId);
-  await page.goto(`${harness.origin}/product/edit/real`);
-  const panel = page.locator("#tiktok-seller-tool-root");
-  await expect(panel.getByText("PRO", { exact: true })).toBeVisible();
+  await upgradeLikeStripe(harness.api, context, user.userId);
   const failed = await harness.api.webhook("invoice.payment_failed", {
     id: "in_fail",
     object: "invoice",
     subscription: `sub_e2e_${user.userId}`,
   });
   expect(failed.ok).toBe(true);
-  await expect(panel.getByRole("button", { name: "Upgrade" })).toHaveCount(0);
-});
-
-test("E-BILL-CANCEL-LIVE deleting the subscription returns the overlay to Free", async ({ page, harness, context, extId }) => {
-  const user = await freeUser(harness.api, context, extId);
-  await makePro(harness.api, user.userId);
+  // The server must still say Pro, and a fresh panel must too.
+  const me = await harness.api.me(user.token);
+  expect(me.is_pro).toBe(true);
+  const rows = (await harness.api.rows("subscriptions", `sub_e2e_${user.userId}`)) as { rows: Array<{ user_id: number; status: string }> };
+  expect(rows.rows.find((row) => row.user_id === user.userId)?.status).toBe("past_due");
   await page.goto(`${harness.origin}/product/edit/real`);
   const panel = page.locator("#tiktok-seller-tool-root");
   await expect(panel.getByText("PRO", { exact: true })).toBeVisible();
-  const deleted = await harness.api.webhook("customer.subscription.deleted", {
-    id: `sub_e2e_${user.userId}`,
-    object: "subscription",
-    status: "canceled",
-  });
-  expect(deleted.ok).toBe(true);
-  await expect(panel.getByRole("button", { name: "Upgrade" })).toBeVisible();
+  await expect(panel.getByRole("button", { name: "Upgrade" })).toHaveCount(0);
 });
 
-test("E-BILL-LATE-INVOICE a late invoice.paid does not restore Pro", async ({ page, harness, context, extId }) => {
+test("E-BILL-CANCEL-LIVE a cancel returns the open overlay to Free", async ({ page, harness, context, extId }) => {
   const user = await freeUser(harness.api, context, extId);
-  await makePro(harness.api, user.userId);
-  await harness.api.webhook("customer.subscription.deleted", {
-    id: `sub_e2e_${user.userId}`,
-    object: "subscription",
-    status: "canceled",
-  });
+  await upgradeLikeStripe(harness.api, context, user.userId);
   await page.goto(`${harness.origin}/product/edit/real`);
   const panel = page.locator("#tiktok-seller-tool-root");
+  await expect(panel.getByText("PRO", { exact: true })).toBeVisible();
+  await cancelLikeStripe(harness.api, context, user.userId);
+  await page.bringToFront();
   await expect(panel.getByRole("button", { name: "Upgrade" })).toBeVisible();
-  await harness.api.webhook("invoice.paid", {
+  expect((await harness.api.me(user.token)).is_pro).toBe(false);
+});
+
+test("E-BILL-LATE-INVOICE a late invoice.paid after a cancel does not restore Pro", async ({ page, harness, context, extId }) => {
+  const user = await freeUser(harness.api, context, extId);
+  await upgradeLikeStripe(harness.api, context, user.userId);
+  await cancelLikeStripe(harness.api, context, user.userId);
+  const late = await harness.api.webhook("invoice.paid", {
     id: "in_late",
     object: "invoice",
     subscription: `sub_e2e_${user.userId}`,
   });
+  expect(late.ok).toBe(true);
+  // Server first, then a fresh panel after a forced plan check.
+  expect((await harness.api.me(user.token)).is_pro).toBe(false);
+  const done = await context.newPage();
+  await done.goto("http://127.0.0.1:8000/billing/done?ok=1");
+  await done.close();
+  await page.goto(`${harness.origin}/product/edit/real`);
+  const panel = page.locator("#tiktok-seller-tool-root");
   await expect(panel.getByRole("button", { name: "Upgrade" })).toBeVisible();
-  await expect.poll(async () => panel.getByRole("button", { name: "Upgrade" }).count()).toBe(1);
+  await expect(panel.getByText("PRO", { exact: true })).toHaveCount(0);
 });
 
-test("E-BILL-DONE-TAB the billing done page refreshes the tier", async ({ page, harness, context, extId }) => {
+test("E-BILL-DONE-TAB only a successful checkout page refreshes the plan", async ({ page, harness, context, extId }) => {
+  // ok=1: the backend already says Pro, the extension still has Free cached.
   const user = await freeUser(harness.api, context, extId);
-  await makePro(harness.api, user.userId);
   await page.goto(`${harness.origin}/product/edit/real`);
-  const done = await page.context().newPage();
-  await done.goto("http://127.0.0.1:8000/billing/done?ok=1");
   const panel = page.locator("#tiktok-seller-tool-root");
-  await expect(panel.getByText("PRO", { exact: true })).toBeVisible();
-  const no = await page.context().newPage();
-  await no.goto("http://127.0.0.1:8000/billing/done?ok=0");
+  await expect(panel.getByRole("button", { name: "Upgrade" })).toBeVisible();
+  await makePro(harness.api, user.userId);
+  const done = await context.newPage();
+  await done.goto("http://127.0.0.1:8000/billing/done?ok=1");
+  await page.bringToFront();
   await expect(panel.getByText("PRO", { exact: true })).toBeVisible();
   await done.close();
-  await no.close();
+
+  // ok=0 (checkout canceled): same setup with a new account; the cached Free plan stays.
+  const other = await freeUser(harness.api, context, extId, page);
+  await page.goto(`${harness.origin}/product/edit/real`);
+  await expect(panel.getByRole("button", { name: "Upgrade" })).toBeVisible();
+  await makePro(harness.api, other.userId);
+  const canceled = await context.newPage();
+  await canceled.goto("http://127.0.0.1:8000/billing/done?ok=0");
+  await page.bringToFront();
+  // Named wait: longer than the 2-second panel resync, so a wrong refresh would show.
+  await page.waitForTimeout(5000);
+  await expect(panel.getByRole("button", { name: "Upgrade" })).toBeVisible();
+  await canceled.close();
 });
 
 test("E-BILL-PROMO promo codes redeem once and reject bad or repeat codes", async ({ page, harness, context, extId }) => {

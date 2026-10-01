@@ -143,7 +143,12 @@ export default function ProfitBoard({ skus, settings, isPro, onHelp, onAddCost, 
           {worst.map((row) => {
             const tone: Tone = row.netPerUnit > 0 ? "profit" : "loss";
             return (
-              <div key={row.skuId} className={cx("rounded-xl border border-l-4 border-slate-200 bg-white px-3 py-2", TONE[tone].accent)}>
+              <div
+                key={row.skuId}
+                className={cx("rounded-xl border border-l-4 border-slate-200 bg-white px-3 py-2", TONE[tone].accent)}
+                data-board-sku={row.skuId}
+                data-net={row.netPerUnit.toFixed(2)}
+              >
                 <div className="flex items-start justify-between gap-2">
                   <p className="min-w-0 truncate text-sm font-semibold text-slate-900">{row.title}</p>
                   <p className={cx("shrink-0 text-sm font-extrabold tabular-nums", TONE[tone].text)}>{formatSignedUsd(row.netPerUnit)}</p>

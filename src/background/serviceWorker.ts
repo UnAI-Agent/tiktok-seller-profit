@@ -4,6 +4,7 @@ import { ApiError, errorTextFromJson } from "../lib/apiErrors";
 import { postAuth } from "../lib/authCall";
 import { exchangeOAuthTicket, getStoredToken, setStoredToken } from "../lib/apiClient";
 import { getCachedTier, refreshSubscriptionCache } from "../lib/subscription";
+import { CHECKOUT_POLL_ALARM, createTierRefresher } from "../lib/tierRefresh";
 import {
   isRuntimeMessage,
   type RuntimeResponse,
@@ -21,7 +22,7 @@ import {
   saveSettings,
   saveSku,
   syncSkus,
-  touchSps,
+  saveSps,
 } from "../lib/storage";
 
 const oauthTicketsInFlight = new Set<string>();
@@ -145,7 +146,7 @@ async function claimOAuthTicket(ticket: string, tabId?: number): Promise<boolean
   oauthTicketsInFlight.add(ticket);
   try {
     await exchangeOAuthTicket(ticket);
-    await refreshTierFromServer();
+    await refreshTierFromServer({ force: true });
     await markTicketClaimed(ticket);
     await chrome.storage.local.remove("oauthError");
     await finishOAuthUi(tabId);
@@ -252,7 +253,7 @@ function watchOAuthLanding(): void {
         if (settings.overlayCollapsed) {
           await saveSettings({ ...settings, overlayCollapsed: false });
         }
-        await refreshTierFromServer();
+        await refreshTierFromServer({ force: true });
         await showOverlayOnSeller();
       })();
     }
@@ -284,13 +285,19 @@ chrome.runtime.onInstalled.addListener(() => {
 chrome.runtime.onStartup.addListener(() => {
   trustStorage();
   void chrome.action.setPopup({ popup: "" });
-  void refreshTierFromServer();
+  void refreshTierFromServer({ force: true });
 });
 trustStorage();
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local") return;
   const keys = Object.keys(changes);
+  if (keys.includes("authToken")) {
+    // New account or signed out: the next plan check goes to the server at once.
+    void tierRefresher.reset().then(() => {
+      if (changes.authToken?.newValue) void refreshTierFromServer({ force: true });
+    });
+  }
   void chrome.tabs.query({}).then((tabs) => {
     for (const tab of tabs) {
       if (!tab.id || !tab.url || !isSellerCenterUrl(tab.url)) continue;
@@ -299,14 +306,27 @@ chrome.storage.onChanged.addListener((changes, area) => {
   });
 });
 
-async function refreshTierFromServer(): Promise<void> {
-  try {
-    await refreshSubscriptionCache();
-  } catch {
-    /* keep the last cached tier when the API is unreachable */
-  }
+const tierRefresher = createTierRefresher({
+  now: () => Date.now(),
+  refreshFromServer: () => refreshSubscriptionCache(),
+  getCachedTier,
+  session: {
+    get: (key) => chrome.storage.session.get(key),
+    set: (values) => chrome.storage.session.set(values),
+    remove: (key) => chrome.storage.session.remove(key),
+  },
+  alarms: {
+    create: (name, info) => chrome.alarms.create(name, info),
+    clear: (name) => chrome.alarms.clear(name),
+  },
+});
+
+/** Server plan check, capped at one a minute unless forced. See lib/tierRefresh.ts. */
+async function refreshTierFromServer(options: { force?: boolean } = {}): Promise<void> {
+  await tierRefresher.refresh(options);
 }
 
+// Runs on every worker wake (tab events wake it), so it stays rate-limited.
 void refreshTierFromServer();
 
 if (LLE_TEST_BANNER) {
@@ -372,7 +392,7 @@ chrome.action.onClicked.addListener((tab) => {
       isSellerCenterUrl(tab.url ?? "");
     if (onSeller) {
       try {
-        await refreshTierFromServer();
+        await refreshTierFromServer({ force: true });
         await showPanelOnTab(tabId);
       } catch {
         /* inject failed */
@@ -384,17 +404,18 @@ chrome.action.onClicked.addListener((tab) => {
   })();
 });
 
-chrome.alarms.create("spsRefresh", { periodInMinutes: 360 });
+// The old 6-hour "spsRefresh" alarm bumped the score date without re-reading it.
+void chrome.alarms.clear("spsRefresh");
 chrome.alarms.create("remoteConfigRefresh", { periodInMinutes: 15 });
 void refreshRemoteConfig();
 
 chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === "spsRefresh") {
-    void touchSps();
-  }
   if (alarm.name === "remoteConfigRefresh") {
     void refreshRemoteConfig();
     void refreshTierFromServer();
+  }
+  if (alarm.name === CHECKOUT_POLL_ALARM) {
+    void tierRefresher.checkoutPollTick();
   }
 });
 
@@ -448,6 +469,18 @@ chrome.runtime.onMessage.addListener(
           case "GET_SPS":
             sendResponse({ ok: true, sps: (await getSps()) ?? undefined });
             return;
+          case "REFRESH_REMOTE_CONFIG":
+            await refreshRemoteConfig();
+            sendResponse({ ok: true });
+            return;
+          case "SAVE_SPS": {
+            const previous = await getSps();
+            const fresh = !previous || previous.score !== message.score ||
+              Date.now() - Date.parse(previous.updatedAt) > 60 * 60_000;
+            const sps = fresh ? await saveSps(message.score) : previous;
+            sendResponse({ ok: true, sps: sps ?? undefined });
+            return;
+          }
           case "REFRESH_OVERLAY":
             sendResponse({ ok: true });
             return;
@@ -540,7 +573,7 @@ chrome.runtime.onMessage.addListener(
               return;
             }
             if (result.token) await setStoredToken(result.token);
-            await refreshTierFromServer();
+            await refreshTierFromServer({ force: true });
             sendResponse({ ok: true });
             return;
           }
@@ -552,6 +585,11 @@ chrome.runtime.onMessage.addListener(
             sendResponse({ ok: true });
             return;
           }
+          case "CHECKOUT_STARTED": {
+            await tierRefresher.startCheckoutPoll();
+            sendResponse({ ok: true });
+            return;
+          }
           case "GET_TIER": {
             // Cached plan only, no network. Safe to call from a storage-change handler.
             const token = await getStoredToken();
@@ -559,7 +597,7 @@ chrome.runtime.onMessage.addListener(
             return;
           }
           case "AUTH_STATUS": {
-            await refreshTierFromServer();
+            await refreshTierFromServer({ force: message.force === true });
             const token = await getStoredToken();
             const tier = await getCachedTier();
             sendResponse({ ok: true, loggedIn: Boolean(token), tier });

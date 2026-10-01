@@ -1,17 +1,103 @@
 {
   "url": "http://127.0.0.1:8765/lab/product/manage/",
-  "note": "Nets use default settings: 6% fee, 3% refunds, 10% creator commission on 100% of sales, 15% target. Row B's verdict is the promo break-even check. Row I matches only after statement.csv. Before that import, I is healthy and the thin count is 2.",
+  "generatedBy": "scripts/answer-key.py (independent of src/lib/profit.ts). Do not edit by hand.",
+  "note": "Default settings: 6% referral fee, 3% refunds, refund admin fee (20% of the referral fee, max $5) on typed costs, 10% creator commission on 100% of sales, 15% target. After statement.csv every costed product uses the statement's actual rates and no admin-fee estimate.",
+  "creators": [
+    {
+      "creator": "@dealhunter",
+      "orders": 7,
+      "refunded": 0,
+      "revenue": 41.94,
+      "commission": 10.5,
+      "net": -6.67,
+      "margin": -22.3,
+      "verdict": "losing",
+      "label": "Losing money. Cap commission at 2.8% or stop"
+    },
+    {
+      "creator": "@glowwithjess",
+      "orders": 12,
+      "refunded": 1,
+      "revenue": 199.84,
+      "commission": 72.0,
+      "net": 2.58,
+      "margin": 1.3,
+      "verdict": "renegotiate",
+      "label": "Below your 15% goal. Offer ≤22.3%"
+    },
+    {
+      "creator": "@kitchenhacks",
+      "orders": 12,
+      "refunded": 0,
+      "revenue": 419.88,
+      "commission": 63.0,
+      "net": 198.94,
+      "margin": 47.4,
+      "verdict": "keep",
+      "label": "Profitable. Ask for more videos"
+    },
+    {
+      "creator": "@deskgoals",
+      "orders": 10,
+      "refunded": 0,
+      "revenue": 2499.9,
+      "commission": 250.0,
+      "net": 1124.01,
+      "margin": 45.0,
+      "verdict": "keep",
+      "label": "Profitable. Ask for more videos"
+    },
+    {
+      "creator": "@newbie.creator",
+      "orders": 3,
+      "refunded": 0,
+      "revenue": 179.97,
+      "commission": 21.6,
+      "net": null,
+      "margin": null,
+      "verdict": "add-costs",
+      "label": "Add product costs to see profit"
+    }
+  ],
   "overviewBeforeStatement": {
-    "losing": ["B", "D", "E"],
-    "thin": ["C", "F"],
-    "healthy": ["A", "H", "I", "J"],
-    "missing": ["G"]
+    "losing": [
+      "B",
+      "D",
+      "E"
+    ],
+    "thin": [
+      "C",
+      "F"
+    ],
+    "healthy": [
+      "A",
+      "H",
+      "I",
+      "J"
+    ],
+    "missing": [
+      "G"
+    ]
   },
   "overviewAfterStatement": {
-    "losing": ["B", "D", "E"],
-    "thin": ["C", "F", "I"],
-    "healthy": ["A", "H", "J"],
-    "missing": ["G"]
+    "losing": [
+      "B",
+      "D",
+      "E"
+    ],
+    "thin": [
+      "C",
+      "F",
+      "I"
+    ],
+    "healthy": [
+      "A",
+      "H",
+      "J"
+    ],
+    "missing": [
+      "G"
+    ]
   },
   "products": [
     {
@@ -24,9 +110,16 @@
       "adsPerUnit": 3,
       "packagingPerUnit": 0,
       "affiliatePct": null,
-      "net": 21.39,
+      "net": 21.38,
       "margin": 53.5,
-      "verdict": "Healthy"
+      "verdict": "Healthy",
+      "refundAdminFee": 0.01,
+      "afterStatement": {
+        "unitsSold": 30,
+        "net": 21.39,
+        "margin": 53.5,
+        "verdict": "Healthy"
+      }
     },
     {
       "key": "B",
@@ -38,9 +131,16 @@
       "adsPerUnit": 4,
       "packagingPerUnit": 0,
       "affiliatePct": null,
-      "net": -1.81,
-      "margin": -9,
-      "verdict": "Promo price is below break-even ($22.22)"
+      "net": -1.82,
+      "margin": -9.1,
+      "verdict": "Promo price is below break-even ($22.23)",
+      "refundAdminFee": 0.01,
+      "afterStatement": {
+        "unitsSold": 30,
+        "net": -1.81,
+        "margin": -9.0,
+        "verdict": "Promo price is below break-even ($22.22)"
+      }
     },
     {
       "key": "C",
@@ -53,8 +153,15 @@
       "packagingPerUnit": 0,
       "affiliatePct": 40,
       "net": 1.19,
-      "margin": 6,
-      "verdict": "Below target"
+      "margin": 5.9,
+      "verdict": "Below target",
+      "refundAdminFee": 0.01,
+      "afterStatement": {
+        "unitsSold": 30,
+        "net": 1.19,
+        "margin": 6.0,
+        "verdict": "Below target"
+      }
     },
     {
       "key": "D",
@@ -66,9 +173,16 @@
       "adsPerUnit": 22,
       "packagingPerUnit": 0,
       "affiliatePct": null,
-      "net": -3.66,
+      "net": -3.67,
       "margin": -10.5,
-      "verdict": "Cut ads to ≤$18.34/order"
+      "verdict": "Cut ads to ≤$18.33/order",
+      "refundAdminFee": 0.01,
+      "afterStatement": {
+        "unitsSold": 30,
+        "net": -3.66,
+        "margin": -10.5,
+        "verdict": "Cut ads to ≤$18.34/order"
+      }
     },
     {
       "key": "E",
@@ -82,7 +196,14 @@
       "affiliatePct": null,
       "net": -0.36,
       "margin": -7.2,
-      "verdict": "Cut commission to ≤2.8%"
+      "verdict": "Cut commission to ≤2.8%",
+      "refundAdminFee": 0.0,
+      "afterStatement": {
+        "unitsSold": 30,
+        "net": -0.36,
+        "margin": -7.2,
+        "verdict": "Cut commission to ≤2.8%"
+      }
     },
     {
       "key": "F",
@@ -95,8 +216,15 @@
       "packagingPerUnit": 0,
       "affiliatePct": null,
       "net": 1.64,
-      "margin": 11,
-      "verdict": "Below target"
+      "margin": 10.9,
+      "verdict": "Below target",
+      "refundAdminFee": 0.01,
+      "afterStatement": {
+        "unitsSold": 30,
+        "net": 1.64,
+        "margin": 11.0,
+        "verdict": "Below target"
+      }
     },
     {
       "key": "G",
@@ -111,7 +239,14 @@
       "net": null,
       "margin": null,
       "verdict": "Missing cost",
-      "hiddenProfit": 48.59
+      "refundAdminFee": 0.02,
+      "hiddenProfit": 48.57,
+      "afterStatement": {
+        "unitsSold": 30,
+        "net": null,
+        "margin": null,
+        "verdict": "Missing cost"
+      }
     },
     {
       "key": "H",
@@ -123,9 +258,16 @@
       "adsPerUnit": 0,
       "packagingPerUnit": 0,
       "affiliatePct": null,
-      "net": 112.49,
-      "margin": 45,
-      "verdict": "Healthy"
+      "net": 112.4,
+      "margin": 45.0,
+      "verdict": "Healthy",
+      "refundAdminFee": 0.09,
+      "afterStatement": {
+        "unitsSold": 30,
+        "net": 112.49,
+        "margin": 45.0,
+        "verdict": "Healthy"
+      }
     },
     {
       "key": "I",
@@ -137,10 +279,16 @@
       "adsPerUnit": 0,
       "packagingPerUnit": 0,
       "affiliatePct": null,
-      "net": 0.59,
-      "margin": 2,
-      "verdict": "Below target",
-      "statement": { "feePct": 0.08, "refundPct": 0.2, "affiliatePct": 0.1, "shipping": 6, "negative": true }
+      "net": 12.28,
+      "margin": 41.0,
+      "verdict": "Healthy",
+      "refundAdminFee": 0.01,
+      "afterStatement": {
+        "unitsSold": 30,
+        "net": 0.59,
+        "margin": 2.0,
+        "verdict": "Below target"
+      }
     },
     {
       "key": "J",
@@ -152,9 +300,16 @@
       "adsPerUnit": 0,
       "packagingPerUnit": 0,
       "affiliatePct": null,
-      "net": 14.16,
+      "net": 14.15,
       "margin": 39.3,
-      "verdict": "Healthy"
+      "verdict": "Healthy",
+      "refundAdminFee": 0.01,
+      "afterStatement": {
+        "unitsSold": 30,
+        "net": 14.16,
+        "margin": 39.3,
+        "verdict": "Healthy"
+      }
     }
   ]
 }

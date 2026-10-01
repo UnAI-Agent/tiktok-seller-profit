@@ -4,7 +4,7 @@
   "short_name": "MarginMark",
   "version": "1.4.0",
   "minimum_chrome_version": "137",
-  "description": "Real-time profit margins for TikTok Shop sellers. See hidden fees, break-even prices, margin tone.",
+  "description": "See which TikTok Shop products and creators lose you money, and the exact fix. Real fees, break-even prices, SPS alerts.",
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",

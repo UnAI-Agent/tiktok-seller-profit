@@ -1,8 +1,21 @@
+import { existsSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "../support/fixtures";
 import { email, makePro, seedToken, wipeExtension } from "../support/session";
 
+const snapshots = path.join(path.dirname(fileURLToPath(import.meta.url)), "12-visual-a11y.spec.ts-snapshots");
+const BASELINES = ["logged-out", "collapsed", "logged-in", "plans", "board"];
+
 test("E-VIS-SNAPSHOTS screenshot baselines of the main panels", async ({ page, harness, context, extId, overlay }) => {
+  // Baselines are per OS. Where this OS has none yet (a fresh CI runner), skip rather than
+  // fail; `npm run test:baselines` sets E2E_VISUAL_BASELINES=1 and writes them for review.
+  const have = BASELINES.every((name) => existsSync(path.join(snapshots, `${name}-${process.platform}.png`)));
+  test.skip(
+    !have && process.env.E2E_VISUAL_BASELINES !== "1",
+    `skip:no ${process.platform} screenshot baselines yet. Run npm run test:baselines (E2E_VISUAL_BASELINES=1), review the PNGs, commit them.`,
+  );
   await wipeExtension(context, extId, page);
   await page.goto(`${harness.origin}/product/edit/real`);
   await expect(overlay(page).getByText("$36.00")).toBeVisible();

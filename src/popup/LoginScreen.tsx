@@ -101,10 +101,13 @@ export default function LoginScreen({ onAuthChange, defaultMode = "login" }: Log
     }
     if (mode === "signup" ? !checkPassword(password).valid : password.length < 8) {
       setMsgTone("error");
+      // Same words the API uses (security/passwords.py validate_password).
       setMsg(
-        mode === "signup"
-          ? "Password needs at least 3 of: uppercase, lowercase, number, special character"
-          : "Enter your password (8+ characters).",
+        mode !== "signup"
+          ? "Enter your password (8+ characters)."
+          : password.length < 8
+            ? "Password must be at least 8 characters"
+            : "Password needs at least 3 of: uppercase, lowercase, number, special character",
       );
       return;
     }
@@ -112,7 +115,7 @@ export default function LoginScreen({ onAuthChange, defaultMode = "login" }: Log
     try {
       if (mode === "signup") await register(loginEmail, password);
       else await login(loginEmail, password);
-      trackEvent(mode === "signup" ? "auth.register" : "auth.login");
+      trackEvent(mode === "signup" ? "user.registered" : "auth.login");
       setMsgTone("ok");
       setMsg(
         mode === "signup"

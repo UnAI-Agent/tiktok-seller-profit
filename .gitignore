@@ -181,5 +181,6 @@ platform.db-journal
 !/TESTING.md
 !/qa/FINDINGS.md
 !/qa/MANUAL_CHECKLIST.md
+!/store/LISTING.md
 .cursor/
 docs/claude/

@@ -362,6 +362,9 @@ export async function createCheckoutUrl(
   if (!data.url) {
     throw new ApiError("Checkout unavailable. Try again.", 500, "http");
   }
+  // The worker checks the plan every 30 seconds for 15 minutes, so the open
+  // panel unlocks Pro even if the seller never returns to the success page.
+  void sendMessage({ type: "CHECKOUT_STARTED" }).catch(() => undefined);
   return data.url;
 }
 

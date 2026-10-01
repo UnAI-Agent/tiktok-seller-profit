@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { computeProfit, formatSignedUsd } from "../../src/lib/profit";
 import { expect, test } from "../support/fixtures";
-import { wipeExtension } from "../support/session";
+import { clickLeaving, wipeExtension } from "../support/session";
 
 const FEES = {
   refundRatePct: 3,
@@ -42,7 +42,7 @@ test("E-OVL-LIVE-EDIT editing the page price updates the overlay net", async ({ 
   await page.locator('[data-testid="retail-price"]').dispatchEvent("input");
   await expect(panel.getByText("List $50.00")).toBeVisible();
   await panel.locator("#mm-hero-cost").fill("8");
-  await panel.getByRole("button", { name: "See my profit" }).click();
+  await clickLeaving(panel.getByRole("button", { name: "See my profit" }));
   const result = computeProfit({
     listPrice: 50,
     cogsPerUnit: 8,
@@ -56,6 +56,7 @@ test("E-OVL-LIVE-EDIT editing the page price updates the overlay net", async ({ 
     packagingPerUnit: 0,
     affiliatePct: FEES.affiliatePct,
     affiliateSharePct: FEES.affiliateSharePct,
+    includeRefundAdminFee: true,
   });
   await expect(panel.getByText(formatSignedUsd(result.netPerUnit)).first()).toBeVisible();
 });
@@ -67,7 +68,7 @@ test("E-OVL-NOPRICE a page with no price asks for a selling price", async ({ pag
   await expect(input).toBeVisible();
   await input.fill("20");
   await panel.locator("#mm-hero-cost").fill("4");
-  await panel.getByRole("button", { name: "See my profit" }).click();
+  await clickLeaving(panel.getByRole("button", { name: "See my profit" }));
   const result = computeProfit({
     listPrice: 20,
     cogsPerUnit: 4,
@@ -81,6 +82,7 @@ test("E-OVL-NOPRICE a page with no price asks for a selling price", async ({ pag
     packagingPerUnit: 0,
     affiliatePct: FEES.affiliatePct,
     affiliateSharePct: FEES.affiliateSharePct,
+    includeRefundAdminFee: true,
   });
   await expect(panel.getByText(formatSignedUsd(result.netPerUnit)).first()).toBeVisible();
 });
@@ -149,7 +151,7 @@ test("E-OVL-GUARD-CHIP a loss product shows the price-guard chip", async ({ page
   const chip = page.locator("#marginguard-price-guard");
   await expect(chip).toHaveCount(0);
   await panel.locator("#mm-hero-cost").fill("80");
-  await panel.getByRole("button", { name: "See my profit" }).click();
+  await clickLeaving(panel.getByRole("button", { name: "See my profit" }));
   await expect(chip).toHaveCount(1);
   await panel.getByRole("spinbutton", { name: "Product cost" }).fill("1");
   await panel.getByRole("spinbutton", { name: "Product cost" }).blur();

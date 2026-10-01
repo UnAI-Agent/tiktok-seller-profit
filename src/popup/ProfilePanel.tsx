@@ -38,6 +38,8 @@ type ProfilePanelProps = {
   onAccountChanged?: () => void;
   /** Products with a saved cost, for the Free usage meter. */
   costsSaved?: number;
+  /** Address already read by the panel, so the field is not blank while the profile request is still out. */
+  defaultEmail?: string;
 };
 
 type Notice = { tone: "ok" | "loss"; text: string } | null;
@@ -74,11 +76,11 @@ function Fold({ title, children, tone = "neutral" }: { title: string; children: 
   );
 }
 
-export default function ProfilePanel({ onClose, onLogout, onAccountChanged, costsSaved = 0 }: ProfilePanelProps) {
+export default function ProfilePanel({ onClose, onLogout, onAccountChanged, costsSaved = 0, defaultEmail = "" }: ProfilePanelProps) {
   const [me, setMe] = useState<MeResponse | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(defaultEmail);
   const [busy, setBusy] = useState<string | null>(null);
 
   const [profileNote, setProfileNote] = useState<Notice>(null);
@@ -97,17 +99,28 @@ export default function ProfilePanel({ onClose, onLogout, onAccountChanged, cost
   const [showUpgrade, setShowUpgrade] = useState(false);
 
   const load = useCallback(async () => {
-    try {
-      const profile = await fetchMe();
-      setMe(profile);
-      setName(profile?.display_name ?? "");
-      setEmail(profile?.email ?? "");
-    } catch {
-      /* the screen stays usable offline; each action reports its own error */
-    } finally {
-      setLoaded(true);
+    // One miss used to leave the email box blank for the rest of the visit.
+    let profile: MeResponse | null = null;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      try {
+        profile = await fetchMe();
+      } catch {
+        profile = null;
+      }
+      if (profile?.email) break;
+      if (attempt < 4) await new Promise((resolve) => setTimeout(resolve, 300));
     }
+    setLoaded(true);
+    if (!profile?.email) return;
+    const found = profile;
+    setMe(found);
+    setName((current) => current || found.display_name || "");
+    setEmail((current) => current || found.email);
   }, []);
+
+  useEffect(() => {
+    if (defaultEmail) setEmail((current) => current || defaultEmail);
+  }, [defaultEmail]);
 
   useEffect(() => {
     void load();

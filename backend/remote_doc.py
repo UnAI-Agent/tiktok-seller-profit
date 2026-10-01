@@ -23,7 +23,7 @@ FLAG_KEYS = (
     "creatorProfit",
     "bulkCost",
 )
-SURFACES = {"product-edit", "product-list"}
+SURFACES = {"product-edit", "product-list", "account-health"}
 FIELDS = {"productTitle", "listPrice", "unitsSold", "spsScore"}
 EXECUTABLE = re.compile(r"javascript:|<script|eval\(|new\s+function", re.I)
 

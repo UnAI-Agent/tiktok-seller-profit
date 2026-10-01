@@ -1,6 +1,6 @@
 import flags from "../flags.json";
 import { CONFIG_PUBLIC_KEY_SPKI_B64 } from "../config/configPublicKey";
-import { FEE_PRESETS, type FeePresetId } from "../config";
+import { API_BASE_URL, FEE_PRESETS, SERVICE_SLUG, type FeePresetId } from "../config";
 
 export const CONFIG_CACHE_KEY = "remoteConfigCache";
 export const INSTALL_ID_KEY = "installId";
@@ -57,7 +57,7 @@ export type FeatureState = {
 };
 
 const EXECUTABLE = /javascript:|<script|eval\(|new\s+function/i;
-const SURFACES = new Set(["product-edit", "product-list"]);
+const SURFACES = new Set(["product-edit", "product-list", "account-health"]);
 const FIELDS = new Set(["productTitle", "listPrice", "unitsSold", "spsScore"]);
 
 export function bundledFlags(): Record<FlagKey, FlagSpec> {
@@ -360,7 +360,8 @@ export function presetFees(
 }
 
 export async function refreshRemoteConfig(): Promise<void> {
-  const { API_BASE_URL, SERVICE_SLUG } = await import("../config");
+  // Static import. A dynamic import() of the config chunk throws in the MV3
+  // service worker, so the 15-minute alarm and REFRESH_REMOTE_CONFIG never store a doc.
   const cachedRaw = await chrome.storage.local.get(CONFIG_CACHE_KEY);
   const cachedParsed = validateRemoteConfig(cachedRaw[CONFIG_CACHE_KEY]);
   const cached = cachedParsed.ok ? cachedParsed.doc : null;

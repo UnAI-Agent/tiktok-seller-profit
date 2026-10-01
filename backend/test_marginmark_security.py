@@ -157,6 +157,30 @@ class HttpHardeningTests(unittest.TestCase):
         self.assertNotIn("postgres://", blob)
         self.assertNotIn("postgresql://", blob)
 
+    def test_health_readiness_is_yes_no_only(self):
+        keys = {"STRIPE_SECRET_KEY": None, "SMTP_HOST": "smtp.example.test", "STRIPE_WEBHOOK_EVENTS_CONFIRMED": None}
+        previous = {name: os.environ.get(name) for name in keys}
+        try:
+            for name, value in keys.items():
+                if value is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = value
+            with TestClient(marginmark_app.app) as client:
+                ready = client.get("/health").json()["ready"]
+        finally:
+            for name, value in previous.items():
+                if value is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = value
+        self.assertTrue(all(isinstance(value, bool) for value in ready.values()))
+        self.assertTrue(ready["mail"])
+        self.assertFalse(ready["webhook_events_confirmed"])
+        for name in ("stripe_key_set", "webhook_signing_set", "pro_prices_set", "config_signing_key_set", "public_base_url_set"):
+            self.assertIn(name, ready)
+        self.assertNotIn("smtp.example.test", str(ready))
+
     def test_login_limit_uses_fly_client_ip_and_email(self):
         with TestClient(marginmark_app.app) as client:
             for _ in range(10):

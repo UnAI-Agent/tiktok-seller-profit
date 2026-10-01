@@ -91,13 +91,27 @@ export default function SupportCenter({ onClose, context, defaultEmail = "", def
   const [sentTo, setSentTo] = useState<string | null>(null);
 
   useEffect(() => {
-    if (defaultEmail) return;
+    if (defaultEmail) {
+      setEmail((current) => current || defaultEmail);
+      return;
+    }
     let cancel = false;
-    void fetchMe()
-      .then((me) => {
-        if (!cancel && me?.email) setEmail((current) => current || me.email);
-      })
-      .catch(() => undefined);
+    // The account address can arrive a moment after Help opens. One miss left the field blank.
+    void (async () => {
+      for (let attempt = 0; attempt < 8 && !cancel; attempt += 1) {
+        try {
+          const me = await fetchMe();
+          if (cancel) return;
+          if (me?.email) {
+            setEmail((current) => current || me.email);
+            return;
+          }
+        } catch {
+          /* try again until the session is readable */
+        }
+        await new Promise((resolve) => setTimeout(resolve, 400));
+      }
+    })();
     return () => {
       cancel = true;
     };

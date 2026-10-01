@@ -20,12 +20,15 @@ export type Api = {
   me: (token: string) => Promise<Record<string, unknown>>;
   verifyEmail: (uid: number, email: string) => Promise<void>;
   webhook: (type: string, obj: Record<string, unknown>, eventId?: string) => Promise<Response>;
-  rows: (table: string) => Promise<unknown>;
+  rows: (table: string, q?: string) => Promise<unknown>;
   telemetry: () => Promise<unknown>;
   publishConfig: (doc: unknown) => Promise<void>;
   down: () => Promise<void>;
   up: (extra?: Record<string, string>) => Promise<void>;
   stop: () => Promise<void>;
+  /** GET /auth/me requests the API has served since the last reset (from the uvicorn access log). */
+  authMeCount: () => number;
+  resetAuthMeCount: () => void;
 };
 
 let ipN = 10;
@@ -108,16 +111,26 @@ export async function startBackend(): Promise<Api> {
     ADMIN_API_ALLOWLIST: "203.0.113.9",
   };
   let stderr = "";
+  let authMe = 0;
   let api: ChildProcess | null = null;
+  // Read both pipes. Uvicorn writes its access log to stdout; an unread pipe fills
+  // (about 64 KB) and blocks the server mid-suite.
+  const attach = (proc: ChildProcess) => {
+    const onData = (chunk: Buffer) => {
+      const text = chunk.toString("utf8");
+      authMe += (text.match(/"GET \/auth\/me[ ?]/g) ?? []).length;
+      stderr = `${stderr}${text}`.slice(-2000);
+    };
+    proc.stdout?.on("data", onData);
+    proc.stderr?.on("data", onData);
+  };
   if (process.env.E2E_REUSE_API !== "1") {
     api = spawn(py.cmd, [...py.prefix, "-m", "uvicorn", "marginmark_app:app", "--host", "127.0.0.1", "--port", "8000"], {
       cwd: backendDir,
       env,
       stdio: ["ignore", "pipe", "pipe"],
     });
-    api.stderr?.on("data", (chunk) => {
-      stderr = `${stderr}${chunk}`.slice(-2000);
-    });
+    attach(api);
   }
   try {
     await waitHealth(dbPath);
@@ -208,8 +221,9 @@ export async function startBackend(): Promise<Api> {
         body: payload,
       });
     },
-    async rows(table) {
-      const res = await json("GET", `/admin/db/rows?table=${encodeURIComponent(table)}`, {
+    async rows(table, q = "") {
+      const search = q ? `&q=${encodeURIComponent(q)}` : "";
+      const res = await json("GET", `/admin/db/rows?table=${encodeURIComponent(table)}${search}`, {
         headers: { "X-Admin-Key": adminKey },
       });
       if (!res.ok) throw new Error(`rows ${res.status} ${await res.text()}`);
@@ -253,12 +267,20 @@ export async function startBackend(): Promise<Api> {
         env: { ...env, ...extra },
         stdio: ["ignore", "pipe", "pipe"],
       });
+      attach(api);
       await waitHealth(dbPath);
     },
     async stop() {
       api?.kill();
       sink.kill();
       await new Promise((resolve) => setTimeout(resolve, 300));
+    },
+    authMeCount() {
+      if (process.env.E2E_REUSE_API === "1") throw new Error("authMeCount needs the harness to start the API (unset E2E_REUSE_API)");
+      return authMe;
+    },
+    resetAuthMeCount() {
+      authMe = 0;
     },
   };
 }

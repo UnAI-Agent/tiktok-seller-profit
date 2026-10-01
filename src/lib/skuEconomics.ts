@@ -37,5 +37,12 @@ export function profitInputFor(
       settings.affiliateSharePct,
     samplesSent: sku.samplesSent ?? 0,
     sampleUnitCost: sku.sampleUnitCost,
+    // TikTok keeps 20% of the referral fee (max $5 per SKU) on a refunded order.
+    // A settlement statement already reports what was actually charged, so the
+    // estimate is added only for costs the seller typed in.
+    includeRefundAdminFee: overrides.includeRefundAdminFee ?? !actual,
+    unrecoveredShipPerUnit:
+      overrides.unrecoveredShipPerUnit ??
+      (actual || !(settings.shippingPassedToBuyer ?? true) ? 0 : Math.max(0, shipRaw || 0)),
   };
 }

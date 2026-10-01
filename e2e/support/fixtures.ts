@@ -28,7 +28,7 @@ export const test = base.extend<
     overlay: (page: Page) => ReturnType<Page["locator"]>;
     consoleErrors: string[];
   },
-  { harness: Harness; extensionContext: BrowserContext }
+  { harness: Harness; extensionContext: BrowserContext; workerExtId: string }
 >({
   harness: [
     async ({}, use) => {
@@ -52,6 +52,15 @@ export const test = base.extend<
     },
     { scope: "worker" },
   ],
+  // Read once per worker: a test that stops the service worker must not break later tests' extId.
+  workerExtId: [
+    async ({ extensionContext }, use) => {
+      let [worker] = extensionContext.serviceWorkers();
+      if (!worker) worker = await extensionContext.waitForEvent("serviceworker", { timeout: 15_000 });
+      await use(new URL(worker.url()).host);
+    },
+    { scope: "worker" },
+  ],
   context: async ({ extensionContext }, use) => {
     await use(extensionContext);
   },
@@ -60,8 +69,8 @@ export const test = base.extend<
     if (!worker) worker = await context.waitForEvent("serviceworker", { timeout: 15_000 });
     await use(worker);
   },
-  extId: async ({ sw }, use) => {
-    await use(new URL(sw.url()).host);
+  extId: async ({ workerExtId }, use) => {
+    await use(workerExtId);
   },
   extPage: async ({ context, extId }, use) => {
     const page = await context.newPage();
@@ -99,9 +108,19 @@ export const test = base.extend<
       const url = page.url();
       await extPage.evaluate(async (target) => {
         const tabs = await chrome.tabs.query({});
-        const tab = tabs.find((item) => item.url === target);
-        if (!tab?.id) throw new Error(`no tab for ${target}`);
-        await chrome.tabs.sendMessage(tab.id, { type: "TOGGLE_INPAGE_PANEL" });
+        const matches = tabs.filter((item) => item.url === target && item.id);
+        if (!matches.length) throw new Error(`no tab for ${target}`);
+        const replies = [];
+        for (const tab of matches) {
+          try {
+            replies.push(await chrome.tabs.sendMessage(tab.id!, { type: "TOGGLE_INPAGE_PANEL" }));
+          } catch (err) {
+            replies.push(String(err));
+          }
+        }
+        if (!replies.some((item) => item && typeof item === "object" && "ok" in item && item.ok)) {
+          throw new Error(`toggle failed: ${JSON.stringify(replies)}`);
+        }
       }, url);
     });
   },

@@ -29,6 +29,7 @@ type GoldenInput = {
   samplesSent: number;
   sampleUnitCost: number;
   unitsSold: number;
+  includeRefundAdminFee?: boolean;
 };
 
 type Expected = Record<string, number | null>;
@@ -52,6 +53,8 @@ function toProfitInput(input: GoldenInput): ProfitInput {
     adsPerUnit: input.adsPerUnit,
     samplesSent: input.samplesSent,
     sampleUnitCost: input.sampleUnitCost,
+    includeRefundAdminFee: input.includeRefundAdminFee ?? false,
+    unrecoveredShipPerUnit: input.shippingPassedToBuyer ? input.shipLabel : 0,
   };
 }
 
@@ -102,8 +105,8 @@ function expectMatch(actual: number | null, expected: number | null, field: stri
 }
 
 describe("golden cases", () => {
-  it("covers the 19 independent cases", () => {
-    expect(golden.cases).toHaveLength(19);
+  it("covers the 22 independent cases (3 with the refund admin fee)", () => {
+    expect(golden.cases).toHaveLength(22);
   });
 
   for (const testCase of golden.cases) {

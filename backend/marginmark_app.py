@@ -606,7 +606,6 @@ TELEMETRY_EVENTS = frozenset(
         "checkout.created",
         "subscription.state_changed",
         "auth.login",
-        "auth.register",
         "onboarding.step",
         "bulk_cost.imported",
         "statement.imported",
@@ -614,6 +613,10 @@ TELEMETRY_EVENTS = frozenset(
         "promo_guard.shown",
         "checkin.viewed",
         "value_receipt.viewed",
+        "sps.captured",
+        "creator.viewed",
+        "upgrade.opened",
+        "upgrade.unlocked",
     }
 )
 _SENSITIVE_PROP = re.compile(r"(email|url|href|password|token|secret|authorization|jwt)", re.I)
@@ -682,6 +685,23 @@ def _oauth_done_html(
     return HTMLResponse(doc, status_code=200 if ok else 400)
 
 
+def launch_readiness() -> dict[str, bool]:
+    """What a paying launch needs, as yes/no only (no values). scripts/launch-check.mjs reads this."""
+    return {
+        # Trials need a verified email, and the code goes out by SMTP.
+        "mail": support_mail.smtp_ready(),
+        "stripe_key_set": bool(STRIPE_SECRET_KEY),
+        "webhook_signing_set": bool(STRIPE_WEBHOOK_SECRET),
+        "webhook_events_confirmed": bool(os.getenv("STRIPE_WEBHOOK_EVENTS_CONFIRMED")),
+        "pro_prices_set": bool(
+            (os.getenv("STRIPE_PRICE_PRO_MONTHLY") or os.getenv("STRIPE_PRICE_TIKTOK_SELLER"))
+            and (os.getenv("STRIPE_PRICE_PRO_YEARLY") or os.getenv("STRIPE_PRICE_TIKTOK_SELLER_YEARLY"))
+        ),
+        "config_signing_key_set": bool(os.getenv("CONFIG_PUBLIC_KEY", "").strip()),
+        "public_base_url_set": bool(PUBLIC_BASE_URL),
+    }
+
+
 @app.get("/health")
 def health():
     body: dict[str, Any] = {
@@ -691,6 +711,7 @@ def health():
         "service": SERVICE,
         "db": "postgres" if USE_POSTGRES else "sqlite",
         "ts": datetime.now(timezone.utc).isoformat(),
+        "ready": launch_readiness(),
     }
     if ENV != "production":
         body["db_path"] = None if USE_POSTGRES else DB_PATH

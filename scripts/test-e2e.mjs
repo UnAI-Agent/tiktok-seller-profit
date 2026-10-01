@@ -14,5 +14,9 @@ if (!live) {
 }
 const args = [cli, "test", "--config", path.join(root, "e2e", "playwright.config.ts")];
 if (live) args.push("e2e/live");
+// Anything else is passed to Playwright, e.g. -g E-VIS-SNAPSHOTS --update-snapshots
+args.push(...process.argv.slice(2).filter((arg) => arg !== "--live"));
+// Writing screenshot baselines: let the visual test run on an OS that has none yet.
+if (process.argv.some((arg) => arg.startsWith("--update-snapshots"))) process.env.E2E_VISUAL_BASELINES = "1";
 const result = spawnSync(process.execPath, args, { cwd: root, stdio: "inherit" });
 process.exit(result.status ?? 1);

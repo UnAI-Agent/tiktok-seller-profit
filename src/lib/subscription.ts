@@ -68,6 +68,7 @@ export async function readTier(): Promise<SubscriptionTier | null> {
 
 /** Ask the service worker to re-check the plan with the API now, then return it. */
 export async function refreshTier(): Promise<SubscriptionTier> {
-  const res = await sendMessage({ type: "AUTH_STATUS" });
+  // A seller pressed a button that asks for the current plan, so skip the one-minute cap.
+  const res = await sendMessage({ type: "AUTH_STATUS", force: true });
   return res.ok ? paidOrFree(res.tier) : "free";
 }

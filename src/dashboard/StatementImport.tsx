@@ -5,10 +5,12 @@ import type { SkuRecord } from "../types/sku";
 import { computeProfit } from "../lib/profit";
 import { profitInputFor } from "../lib/skuEconomics";
 import { sendMessage } from "../lib/messages";
+import { trackEvent } from "../lib/apiClient";
 import {
   aggregateStatement,
   applySettlementRow,
   periodLabelFromRows,
+  ImportLimitError,
   readStatementTable,
   rowsMatchedToProducts,
   STATEMENT_ID_MISMATCH,
@@ -63,7 +65,7 @@ export default function StatementImport({ skus, settings, onHelp }: StatementImp
       setMapping(suggested);
       setNote(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't read that file. Use a CSV or Excel export.");
+      setError(err instanceof ImportLimitError ? err.message : "Couldn't read that file. Use a CSV or Excel export.");
     }
   }
 
@@ -102,7 +104,8 @@ export default function StatementImport({ skus, settings, onHelp }: StatementImp
       setError(STATEMENT_ID_MISMATCH);
       return;
     }
-    setNote(`Updated ${updated} products. Stays on your computer.`);
+    trackEvent("statement.imported", { updated, rows: rows.length });
+    setNote(`Updated ${updated} product${updated === 1 ? "" : "s"}. Stays on your computer.`);
     setError(null);
   }
 

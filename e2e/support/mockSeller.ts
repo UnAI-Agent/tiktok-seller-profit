@@ -2,7 +2,7 @@ import { createServer } from "node:http";
 import { readFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { blankHtml, editPageHtml, loadLabProducts, nopriceHtml, remotePriceHtml, withSaveHtml } from "./editPages.mjs";
+import { accountHealthHtml, blankHtml, editPageHtml, loadLabProducts, nopriceHtml, remotePriceHtml, withSaveHtml } from "./editPages.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const fixtures = path.join(root, "test-fixtures");
@@ -21,6 +21,8 @@ function bodyFor(urlPath) {
   if (urlPath === "/product/edit/blank") return blankHtml();
   if (urlPath === "/product/edit/with-save") return withSaveHtml();
   if (urlPath === "/product/edit/remote") return remotePriceHtml();
+  const health = urlPath.match(/^\/account\/health(?:\/(\d(?:\.\d{1,2})?|none))?$/);
+  if (health) return accountHealthHtml(health[1] === "none" ? null : health[1] ?? "4.3");
   if (urlPath === "/elsewhere") return "<!doctype html><html><body><h1>Not a product</h1></body></html>";
   const edit = urlPath.match(/^\/product\/edit\/(\d+)$/);
   if (edit) {

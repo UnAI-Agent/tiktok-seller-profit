@@ -1,94 +1,490 @@
 [
-  { "id": "E-INST-LOAD", "name": "Extension loads and the service worker registers", "optIn": false },
-  { "id": "E-INST-ORIGIN", "name": "Content script injects only on the mock seller origin", "optIn": false },
-  { "id": "E-INST-SW-RESTART", "name": "Stopping the service worker keeps state and wakes the panel", "optIn": false },
-  { "id": "E-OVL-READ", "name": "Logged-out panel shows the product title and promo price", "optIn": false },
-  { "id": "E-OVL-STRIP", "name": "Logged-out strip, footer, and help button", "optIn": false },
-  { "id": "E-OVL-LIVE-EDIT", "name": "Editing the page price updates the overlay net", "optIn": false },
-  { "id": "E-OVL-NOPRICE", "name": "A page with no price asks for a selling price", "optIn": false },
-  { "id": "E-OVL-BLANK", "name": "A missing page shows no numbers", "optIn": false },
-  { "id": "E-OVL-COLLAPSE", "name": "Minimize persists across reload", "optIn": false },
-  { "id": "E-OVL-CLOSE", "name": "Close hides the panel for this tab until it is opened again", "optIn": false },
-  { "id": "E-OVL-SAVE-NUDGE", "name": "The panel does not cover the page Save button", "optIn": false },
-  { "id": "E-OVL-SPA", "name": "SPA navigation updates the title and price", "optIn": false },
-  { "id": "E-OVL-GUARD-CHIP", "name": "A loss product shows the price-guard chip", "optIn": false },
-  { "id": "E-AUTH-WEAK", "name": "A weak password shows the strength meter and the rule", "optIn": false },
-  { "id": "E-AUTH-SIGNUP", "name": "Sign-up shows the nav tabs and creates the user", "optIn": false },
-  { "id": "E-AUTH-DUP", "name": "A duplicate email is rejected", "optIn": false },
-  { "id": "E-AUTH-BADPW", "name": "A wrong password is rejected", "optIn": false },
-  { "id": "E-AUTH-LOGOUT", "name": "Log out returns the logged-out strip", "optIn": false },
-  { "id": "E-AUTH-VERIFY", "name": "The emailed code verifies the account", "optIn": false },
-  { "id": "E-AUTH-VERIFY-BAD", "name": "A wrong verify code is rejected", "optIn": false },
-  { "id": "E-AUTH-RESEND", "name": "Resend within 60 seconds is rate limited", "optIn": false },
-  { "id": "E-AUTH-RESET", "name": "Forgot password resets through the emailed link", "optIn": false },
-  { "id": "E-AUTH-REVOKE", "name": "Sign-out everywhere expires the overlay session", "optIn": false },
-  { "id": "E-AUTH-OAUTH-TICKET", "name": "An OAuth ticket logs the seller tab in", "optIn": false },
-  { "id": "E-AUTH-SOCIAL-BUTTONS", "name": "Social buttons follow the provider list", "optIn": false },
-  { "id": "E-COST-ENTRY", "name": "Hero cost entry opens the cost grid and saves", "optIn": false },
-  { "id": "E-COST-PERSIST", "name": "Saved costs survive a reload", "optIn": false },
-  { "id": "E-COST-MATH", "name": "Net and margin match the engine and the golden value", "optIn": false },
-  { "id": "E-COST-PROLOCK", "name": "A free user sees the Pro lock, including the loss copy", "optIn": false },
-  { "id": "E-COST-HELP", "name": "Help opens and closes for cost topics", "optIn": false },
-  { "id": "E-LAB-HEADLINE", "name": "The lab list headline counts products and missing costs", "optIn": false },
-  { "id": "E-LAB-SYNC", "name": "Sync imports the lab list, then reports it is up to date", "optIn": false },
-  { "id": "E-LAB-NUMBERS", "name": "Every lab product net, margin, and verdict matches the answer key", "optIn": false },
-  { "id": "E-LAB-BUCKETS-BEFORE", "name": "Profit board buckets match the answer key before the statement", "optIn": false },
-  { "id": "E-LAB-STATEMENT", "name": "Importing the statement moves product I to thin", "optIn": false },
-  { "id": "E-LAB-XLSX", "name": "A small xlsx statement imports", "optIn": false },
-  { "id": "E-LAB-IMPORT-LIMITS", "name": "Oversized statement files show the size and row limits", "optIn": false },
-  { "id": "E-LAB-50-FREE", "name": "A free account can import 50 price-only rows", "optIn": false },
-  { "id": "E-LIMIT-6TH", "name": "The sixth saved cost hits the free limit", "optIn": false },
-  { "id": "E-LIMIT-UNLOCK", "name": "Unlock unlimited opens the plans view", "optIn": false },
-  { "id": "E-LIMIT-AFTER-UPGRADE", "name": "After upgrading, the sixth save succeeds", "optIn": false },
-  { "id": "E-BILL-PRICES", "name": "Plans show the prices and trial disclosure from tiers.json", "optIn": false },
-  { "id": "E-BILL-UNVERIFIED", "name": "An unverified user is sent to verify before checkout", "optIn": false },
-  { "id": "E-BILL-503-UI", "name": "Checkout without Stripe shows the friendly 503", "optIn": false },
-  { "id": "E-BILL-PRO-LIVE", "name": "A signed checkout unlocks Pro on the open overlay", "optIn": false },
-  { "id": "E-BILL-SAMPLE", "name": "The free-sample button increments and persists", "optIn": false },
-  { "id": "E-BILL-GRACE", "name": "A failed invoice keeps Pro", "optIn": false },
-  { "id": "E-BILL-CANCEL-LIVE", "name": "Deleting the subscription returns the overlay to Free", "optIn": false },
-  { "id": "E-BILL-LATE-INVOICE", "name": "A late invoice.paid does not restore Pro", "optIn": false },
-  { "id": "E-BILL-DONE-TAB", "name": "The billing done page refreshes the tier", "optIn": false },
-  { "id": "E-BILL-PROMO", "name": "Promo codes redeem once and reject bad or repeat codes", "optIn": false },
-  { "id": "E-BILL-DIAMOND-HIDDEN", "name": "Diamond stays hidden while its flag is off", "optIn": false },
-  { "id": "E-SET-PRESETS", "name": "Fee presets change the net by the engine amount", "optIn": false },
-  { "id": "E-SET-CUSTOM", "name": "Custom fees persist and show as custom", "optIn": false },
-  { "id": "E-SET-TARGET", "name": "Target margin changes the verdict", "optIn": false },
-  { "id": "E-SET-SHIPPING", "name": "The shipping toggle shows the field and changes the net", "optIn": false },
-  { "id": "E-SET-POSITION", "name": "Bottom-left pins the panel to the left", "optIn": false },
-  { "id": "E-SET-DISABLED", "name": "Turning the overlay off hides it until it is opened", "optIn": false },
-  { "id": "E-SET-TRENDING-CONSENT", "name": "Trending consent is off and sends nothing while the flag is off", "optIn": false },
-  { "id": "E-SET-PERSIST", "name": "Settings survive a reload", "optIn": false },
-  { "id": "E-SUP-SUBMIT", "name": "A support ticket is stored and emailed", "optIn": false },
-  { "id": "E-SUP-CONTEXT", "name": "The support message includes page context", "optIn": false },
-  { "id": "E-SUP-BAD-EMAIL", "name": "An invalid support email is rejected", "optIn": false },
-  { "id": "E-SUP-RATE", "name": "The sixth support ticket in a minute is rate limited", "optIn": false },
-  { "id": "E-ACC-NAME", "name": "The display name can be changed", "optIn": false },
-  { "id": "E-ACC-EMAIL", "name": "Changing the email clears verification", "optIn": false },
-  { "id": "E-ACC-PASSWORD", "name": "A password change keeps this session and rejects the old token", "optIn": false },
-  { "id": "E-ACC-SIGNOUT-ALL", "name": "Sign out everywhere from the account panel", "optIn": false },
-  { "id": "E-ACC-DELETE", "name": "Deleting the account removes the user and shows the logged-out strip", "optIn": false },
-  { "id": "E-RES-API-DOWN", "name": "A stopped API shows connection lost and profit still computes", "optIn": false },
-  { "id": "E-RES-CACHED-PRO", "name": "A cached Pro plan stays Pro while the API is down", "optIn": false },
-  { "id": "E-RES-EXT-RELOAD", "name": "An extension reload does not flip Pro to Free", "optIn": false },
-  { "id": "E-RES-REMOTE-SELECTOR", "name": "A signed remote selector reads a price the bundled selectors miss", "optIn": false },
-  { "id": "E-RES-BAD-SIGNATURE", "name": "A config with a bad signature is ignored", "optIn": false },
-  { "id": "E-RES-PERF", "name": "The panel renders within 1.5s on the 50-row list", "optIn": false },
-  { "id": "E-VIS-SNAPSHOTS", "name": "Screenshot baselines of the main panels", "optIn": false },
-  { "id": "E-A11Y-AXE", "name": "The open panel has no critical or serious accessibility violations", "optIn": false },
-  { "id": "E-FLAG-overlay", "name": "Bundled overlay flag", "optIn": false },
-  { "id": "E-FLAG-productCheck", "name": "Bundled product-check flag", "optIn": false },
-  { "id": "E-FLAG-aiInsights", "name": "AI insights flag, off until remote config enables it", "optIn": false },
-  { "id": "E-FLAG-trendsTelemetry", "name": "Trends telemetry flag", "optIn": false },
-  { "id": "E-FLAG-trendsView", "name": "Trends view flag, off until remote config enables it", "optIn": false },
-  { "id": "E-FLAG-diamondEnabled", "name": "Diamond flag, off until remote config enables it", "optIn": false },
-  { "id": "E-FLAG-statementImport", "name": "Statement import flag", "optIn": false },
-  { "id": "E-FLAG-bulkScan", "name": "Bulk scan flag, off until remote config enables it", "optIn": false },
-  { "id": "E-FLAG-promoGuard", "name": "Promo guard flag", "optIn": false },
-  { "id": "E-FLAG-whatIf", "name": "What-if flag, off until remote config enables it", "optIn": false },
-  { "id": "E-FLAG-csvExport", "name": "CSV export flag, off until remote config enables it", "optIn": false },
-  { "id": "E-FLAG-creatorProfit", "name": "Creator profit flag", "optIn": false },
-  { "id": "E-FLAG-bulkCost", "name": "Bulk cost flag", "optIn": false },
-  { "id": "E-STRIPE-REAL", "name": "Real Stripe test-mode checkout", "optIn": true },
-  { "id": "E-LIVE-SHOP", "name": "Read-only Seller Center smoke", "optIn": true }
+  {
+    "id": "E-INST-LOAD",
+    "name": "Extension loads and the service worker registers",
+    "optIn": false
+  },
+  {
+    "id": "E-INST-ORIGIN",
+    "name": "Content script injects only on the mock seller origin",
+    "optIn": false
+  },
+  {
+    "id": "E-INST-SW-RESTART",
+    "name": "Stopping the service worker keeps state and wakes the panel",
+    "optIn": false
+  },
+  {
+    "id": "E-OVL-READ",
+    "name": "Logged-out panel shows the product title and promo price",
+    "optIn": false
+  },
+  {
+    "id": "E-OVL-STRIP",
+    "name": "Logged-out strip, footer, and help button",
+    "optIn": false
+  },
+  {
+    "id": "E-OVL-LIVE-EDIT",
+    "name": "Editing the page price updates the overlay net",
+    "optIn": false
+  },
+  {
+    "id": "E-OVL-NOPRICE",
+    "name": "A page with no price asks for a selling price",
+    "optIn": false
+  },
+  {
+    "id": "E-OVL-BLANK",
+    "name": "A missing page shows no numbers",
+    "optIn": false
+  },
+  {
+    "id": "E-OVL-COLLAPSE",
+    "name": "Minimize persists across reload",
+    "optIn": false
+  },
+  {
+    "id": "E-OVL-CLOSE",
+    "name": "Close hides the panel for this tab until it is opened again",
+    "optIn": false
+  },
+  {
+    "id": "E-OVL-SAVE-NUDGE",
+    "name": "The panel does not cover the page Save button",
+    "optIn": false
+  },
+  {
+    "id": "E-OVL-SPA",
+    "name": "SPA navigation updates the title and price",
+    "optIn": false
+  },
+  {
+    "id": "E-OVL-GUARD-CHIP",
+    "name": "A loss product shows the price-guard chip",
+    "optIn": false
+  },
+  {
+    "id": "E-AUTH-WEAK",
+    "name": "A weak password shows the strength meter and the rule",
+    "optIn": false
+  },
+  {
+    "id": "E-AUTH-SIGNUP",
+    "name": "Sign-up shows the nav tabs and creates the user",
+    "optIn": false
+  },
+  {
+    "id": "E-AUTH-DUP",
+    "name": "A duplicate email is rejected",
+    "optIn": false
+  },
+  {
+    "id": "E-AUTH-BADPW",
+    "name": "A wrong password is rejected",
+    "optIn": false
+  },
+  {
+    "id": "E-AUTH-LOGOUT",
+    "name": "Log out returns the logged-out strip",
+    "optIn": false
+  },
+  {
+    "id": "E-AUTH-VERIFY",
+    "name": "The emailed code verifies the account",
+    "optIn": false
+  },
+  {
+    "id": "E-AUTH-VERIFY-BAD",
+    "name": "A wrong verify code is rejected",
+    "optIn": false
+  },
+  {
+    "id": "E-AUTH-RESEND",
+    "name": "Resend within 60 seconds is rate limited",
+    "optIn": false
+  },
+  {
+    "id": "E-AUTH-RESET",
+    "name": "Forgot password resets through the emailed link",
+    "optIn": false
+  },
+  {
+    "id": "E-AUTH-REVOKE",
+    "name": "Sign-out everywhere expires the overlay session",
+    "optIn": false
+  },
+  {
+    "id": "E-AUTH-OAUTH-TICKET",
+    "name": "An OAuth ticket logs the seller tab in",
+    "optIn": false
+  },
+  {
+    "id": "E-AUTH-SOCIAL-BUTTONS",
+    "name": "Social buttons follow the provider list",
+    "optIn": false
+  },
+  {
+    "id": "E-COST-ENTRY",
+    "name": "Hero cost entry opens the cost grid and saves",
+    "optIn": false
+  },
+  {
+    "id": "E-COST-PERSIST",
+    "name": "Saved costs survive a reload",
+    "optIn": false
+  },
+  {
+    "id": "E-COST-MATH",
+    "name": "Net and margin match the engine and the golden value",
+    "optIn": false
+  },
+  {
+    "id": "E-COST-PROLOCK",
+    "name": "A free user sees the Pro lock, including the loss copy",
+    "optIn": false
+  },
+  {
+    "id": "E-COST-HELP",
+    "name": "Help opens and closes for cost topics",
+    "optIn": false
+  },
+  {
+    "id": "E-LAB-HEADLINE",
+    "name": "The lab list headline counts products and missing costs",
+    "optIn": false
+  },
+  {
+    "id": "E-LAB-SYNC",
+    "name": "Sync imports the lab list, then reports it is up to date",
+    "optIn": false
+  },
+  {
+    "id": "E-LAB-NUMBERS",
+    "name": "Every lab product net, margin, and verdict matches the answer key",
+    "optIn": false
+  },
+  {
+    "id": "E-LAB-BUCKETS-BEFORE",
+    "name": "Profit board buckets match the answer key before the statement",
+    "optIn": false
+  },
+  {
+    "id": "E-LAB-STATEMENT",
+    "name": "Importing the statement moves product I to thin",
+    "optIn": false
+  },
+  {
+    "id": "E-LAB-XLSX",
+    "name": "A small xlsx statement imports",
+    "optIn": false
+  },
+  {
+    "id": "E-LAB-IMPORT-LIMITS",
+    "name": "Oversized statement files show the size and row limits",
+    "optIn": false
+  },
+  {
+    "id": "E-LAB-50-FREE",
+    "name": "A free account can import 50 price-only rows",
+    "optIn": false
+  },
+  {
+    "id": "E-LIMIT-6TH",
+    "name": "The sixth saved cost hits the free limit",
+    "optIn": false
+  },
+  {
+    "id": "E-LIMIT-UNLOCK",
+    "name": "Unlock unlimited opens the plans view",
+    "optIn": false
+  },
+  {
+    "id": "E-LIMIT-AFTER-UPGRADE",
+    "name": "After upgrading, the sixth save succeeds",
+    "optIn": false
+  },
+  {
+    "id": "E-BILL-PRICES",
+    "name": "Plans show the prices and trial disclosure from tiers.json",
+    "optIn": false
+  },
+  {
+    "id": "E-BILL-UNVERIFIED",
+    "name": "An unverified user is sent to verify before checkout",
+    "optIn": false
+  },
+  {
+    "id": "E-BILL-503-UI",
+    "name": "Checkout without Stripe shows the friendly 503",
+    "optIn": false
+  },
+  {
+    "id": "E-BILL-PRO-LIVE",
+    "name": "A signed checkout unlocks Pro on the open overlay",
+    "optIn": false
+  },
+  {
+    "id": "E-BILL-SAMPLE",
+    "name": "The free-sample button increments and persists",
+    "optIn": false
+  },
+  {
+    "id": "E-BILL-GRACE",
+    "name": "A failed invoice keeps Pro",
+    "optIn": false
+  },
+  {
+    "id": "E-BILL-CANCEL-LIVE",
+    "name": "Deleting the subscription returns the overlay to Free",
+    "optIn": false
+  },
+  {
+    "id": "E-BILL-LATE-INVOICE",
+    "name": "A late invoice.paid does not restore Pro",
+    "optIn": false
+  },
+  {
+    "id": "E-BILL-DONE-TAB",
+    "name": "The billing done page refreshes the tier",
+    "optIn": false
+  },
+  {
+    "id": "E-BILL-PROMO",
+    "name": "Promo codes redeem once and reject bad or repeat codes",
+    "optIn": false
+  },
+  {
+    "id": "E-BILL-DIAMOND-HIDDEN",
+    "name": "Diamond stays hidden while its flag is off",
+    "optIn": false
+  },
+  {
+    "id": "E-SET-PRESETS",
+    "name": "Fee presets change the net by the engine amount",
+    "optIn": false
+  },
+  {
+    "id": "E-SET-CUSTOM",
+    "name": "Custom fees persist and show as custom",
+    "optIn": false
+  },
+  {
+    "id": "E-SET-TARGET",
+    "name": "Target margin changes the verdict",
+    "optIn": false
+  },
+  {
+    "id": "E-SET-SHIPPING",
+    "name": "The shipping toggle shows the field and changes the net",
+    "optIn": false
+  },
+  {
+    "id": "E-SET-POSITION",
+    "name": "Bottom-left pins the panel to the left",
+    "optIn": false
+  },
+  {
+    "id": "E-SET-DISABLED",
+    "name": "Turning the overlay off hides it until it is opened",
+    "optIn": false
+  },
+  {
+    "id": "E-SET-TRENDING-CONSENT",
+    "name": "Trending consent is off and sends nothing while the flag is off",
+    "optIn": false
+  },
+  {
+    "id": "E-SET-PERSIST",
+    "name": "Settings survive a reload",
+    "optIn": false
+  },
+  {
+    "id": "E-SUP-SUBMIT",
+    "name": "A support ticket is stored and emailed",
+    "optIn": false
+  },
+  {
+    "id": "E-SUP-CONTEXT",
+    "name": "The support message includes page context",
+    "optIn": false
+  },
+  {
+    "id": "E-SUP-BAD-EMAIL",
+    "name": "An invalid support email is rejected",
+    "optIn": false
+  },
+  {
+    "id": "E-SUP-RATE",
+    "name": "The sixth support ticket in a minute is rate limited",
+    "optIn": false
+  },
+  {
+    "id": "E-ACC-NAME",
+    "name": "The display name can be changed",
+    "optIn": false
+  },
+  {
+    "id": "E-ACC-EMAIL",
+    "name": "Changing the email clears verification",
+    "optIn": false
+  },
+  {
+    "id": "E-ACC-PASSWORD",
+    "name": "A password change keeps this session and rejects the old token",
+    "optIn": false
+  },
+  {
+    "id": "E-ACC-SIGNOUT-ALL",
+    "name": "Sign out everywhere from the account panel",
+    "optIn": false
+  },
+  {
+    "id": "E-ACC-DELETE",
+    "name": "Deleting the account removes the user and shows the logged-out strip",
+    "optIn": false
+  },
+  {
+    "id": "E-RES-API-DOWN",
+    "name": "A stopped API shows connection lost and profit still computes",
+    "optIn": false
+  },
+  {
+    "id": "E-RES-CACHED-PRO",
+    "name": "A cached Pro plan stays Pro while the API is down",
+    "optIn": false
+  },
+  {
+    "id": "E-RES-EXT-RELOAD",
+    "name": "An extension reload does not flip Pro to Free",
+    "optIn": false
+  },
+  {
+    "id": "E-RES-REMOTE-SELECTOR",
+    "name": "A signed remote selector reads a price the bundled selectors miss",
+    "optIn": false
+  },
+  {
+    "id": "E-RES-BAD-SIGNATURE",
+    "name": "A config with a bad signature is ignored",
+    "optIn": false
+  },
+  {
+    "id": "E-RES-PERF",
+    "name": "The panel renders within 1.5s on the 50-row list",
+    "optIn": false
+  },
+  {
+    "id": "E-VIS-SNAPSHOTS",
+    "name": "Screenshot baselines of the main panels (runs where this OS has baselines)",
+    "optIn": true,
+    "env": "E2E_VISUAL_BASELINES"
+  },
+  {
+    "id": "E-A11Y-AXE",
+    "name": "The open panel has no critical or serious accessibility violations",
+    "optIn": false
+  },
+  {
+    "id": "E-FLAG-overlay",
+    "name": "Bundled overlay flag",
+    "optIn": false
+  },
+  {
+    "id": "E-FLAG-diamondEnabled",
+    "name": "Diamond flag, off until remote config enables it",
+    "optIn": false
+  },
+  {
+    "id": "E-FLAG-statementImport",
+    "name": "Statement import flag",
+    "optIn": false
+  },
+  {
+    "id": "E-FLAG-promoGuard",
+    "name": "Promo guard flag",
+    "optIn": false
+  },
+  {
+    "id": "E-FLAG-whatIf",
+    "name": "What-if flag, off until remote config enables it",
+    "optIn": false
+  },
+  {
+    "id": "E-FLAG-csvExport",
+    "name": "CSV export flag, off until remote config enables it",
+    "optIn": false
+  },
+  {
+    "id": "E-FLAG-creatorProfit",
+    "name": "Creator profit flag",
+    "optIn": false
+  },
+  {
+    "id": "E-FLAG-bulkCost",
+    "name": "Bulk cost flag",
+    "optIn": false
+  },
+  {
+    "id": "E-STRIPE-REAL",
+    "name": "Real Stripe test-mode checkout",
+    "optIn": true,
+    "env": "E2E_STRIPE"
+  },
+  {
+    "id": "E-LIVE-SHOP",
+    "name": "Read-only Seller Center smoke",
+    "optIn": true,
+    "env": "LIVE_PRODUCT_URL"
+  },
+  {
+    "id": "E-NET-BUDGET",
+    "name": "An idle open panel calls /auth/me at most twice a minute",
+    "optIn": false
+  },
+  {
+    "id": "E-BILL-CHECKOUT-POLL",
+    "name": "After checkout opens, Pro unlocks on the open panel with no return visit",
+    "optIn": false
+  },
+  {
+    "id": "E-COST-CONSISTENT",
+    "name": "A product's net is the same on its page, the Products tab and the board",
+    "optIn": false
+  },
+  {
+    "id": "E-CREATORS-PRO",
+    "name": "Pro sees profit and a verdict per creator from the affiliate export",
+    "optIn": false
+  },
+  {
+    "id": "E-CREATORS-FREE",
+    "name": "Free sees creator totals and a lock on the details",
+    "optIn": false
+  },
+  {
+    "id": "E-RECAP",
+    "name": "Weekly recap names new losers and fixes against last week",
+    "optIn": false
+  },
+  {
+    "id": "E-SPS-READ",
+    "name": "The Shop Performance Score is read from Account Health and shown",
+    "optIn": false
+  },
+  {
+    "id": "E-SPS-WARN",
+    "name": "A score under 3.5 warns about affiliate access",
+    "optIn": false
+  },
+  {
+    "id": "E-BULK-COST",
+    "name": "Pasted costs save for matching products and respect the free limit",
+    "optIn": false
+  },
+  {
+    "id": "E-VALUE-RECEIPT",
+    "name": "Free sellers see the dollars MarginMark found before the paywall",
+    "optIn": false
+  }
 ]

@@ -11,8 +11,10 @@ export function refundAdminFeePerSku(referralFeeUsd: number): number {
 
 /**
  * Expected refund admin fee and unrecovered shipping, already weighted by the
- * refund rate so the result is a per-unit cost. Not part of the golden formula
- * until a real settlement confirms the line; pass includeRefundAdminFee to use it.
+ * refund rate so the result is a per-unit cost. profitInputFor turns this on for
+ * every cost the seller typed in; a settlement statement reports actual charges,
+ * so settlement-costed products leave it off. scripts/answer-key.py computes the
+ * same rule independently for the lab answer key.
  */
 export function refundExtraPerUnit(input: {
   listPrice: number;

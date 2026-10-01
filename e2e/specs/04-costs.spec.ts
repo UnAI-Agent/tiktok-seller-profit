@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { computeProfit, formatPct, formatSignedUsd } from "../../src/lib/profit";
 import { expect, test } from "../support/fixtures";
-import { email, seedToken } from "../support/session";
+import { clickLeaving, email, seedToken } from "../support/session";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -18,7 +18,7 @@ test("E-COST-ENTRY hero cost opens the grid and saves", async ({ page, harness, 
   await page.goto(`${harness.origin}/product/edit/1732672081725400001`);
   const panel = page.locator("#tiktok-seller-tool-root");
   await panel.locator("#mm-hero-cost").fill("8");
-  await panel.getByRole("button", { name: "See my profit" }).click();
+  await clickLeaving(panel.getByRole("button", { name: "See my profit" }));
   await expect(panel.getByText("Your costs").first()).toBeVisible();
   await panel.getByRole("spinbutton", { name: "Packaging" }).fill("1");
   await panel.getByRole("spinbutton", { name: "Packaging" }).blur();
@@ -30,7 +30,7 @@ test("E-COST-PERSIST saved costs survive a reload", async ({ page, harness, cont
   await page.goto(`${harness.origin}/product/edit/1732672081725400001`);
   const panel = page.locator("#tiktok-seller-tool-root");
   await panel.locator("#mm-hero-cost").fill("8");
-  await panel.getByRole("button", { name: "See my profit" }).click();
+  await clickLeaving(panel.getByRole("button", { name: "See my profit" }));
   await panel.getByRole("spinbutton", { name: "Packaging" }).fill("1.25");
   await panel.getByRole("spinbutton", { name: "Packaging" }).blur();
   await page.waitForTimeout(800); // cost autosave debounce is 400ms; wait for the save to finish
@@ -67,10 +67,13 @@ test("E-COST-MATH net and margin match the engine and the golden value", async (
   }, input);
   await ext.close();
   await page.goto(`${harness.origin}/product/edit/1732672081725400001`);
-  await page.locator('[data-testid="retail-price"]').fill(String(input.price));
+  const price = page.locator('[data-testid="retail-price"]');
+  await price.fill(String(input.price));
+  await price.dispatchEvent("input");
+  await expect(price).toHaveValue(String(input.price));
   const panel = page.locator("#tiktok-seller-tool-root");
   await panel.locator("#mm-hero-cost").fill(String(input.cogs));
-  await panel.getByRole("button", { name: "See my profit" }).click();
+  await clickLeaving(panel.getByRole("button", { name: "See my profit" }));
   await panel.getByRole("spinbutton", { name: "Packaging" }).fill(String(input.packaging));
   await panel.getByRole("spinbutton", { name: "Creator commission" }).fill(String(input.affiliatePct));
   await panel.getByRole("spinbutton", { name: "Creator commission" }).blur();
@@ -89,8 +92,23 @@ test("E-COST-MATH net and margin match the engine and the golden value", async (
     affiliateSharePct: input.affiliateSharePct,
   });
   expect(Math.abs(result.netPerUnit - golden.expected.netBlended)).toBeLessThanOrEqual(0.01);
-  await expect(panel.getByText(formatSignedUsd(golden.expected.netBlended)).first()).toBeVisible();
-  await expect(panel.getByText(formatPct(golden.expected.marginBlendedPct), { exact: false })).toBeVisible();
+  const shown = computeProfit({
+    listPrice: input.price,
+    unitsSold: 0,
+    cogsPerUnit: input.cogs,
+    shippingOut: 0,
+    adsPerUnit: input.adsPerUnit,
+    platformFeePct: input.platformFeePct,
+    paymentFeePct: input.paymentFeePct,
+    paymentFixed: input.paymentFixed,
+    refundRatePct: input.refundRatePct,
+    packagingPerUnit: input.packaging,
+    affiliatePct: input.affiliatePct,
+    affiliateSharePct: input.affiliateSharePct,
+    includeRefundAdminFee: true,
+  });
+  await expect(panel.getByText(formatSignedUsd(shown.netPerUnit)).first()).toBeVisible();
+  await expect(panel.getByText(formatPct(shown.netMarginPct ?? 0), { exact: false })).toBeVisible();
 });
 
 test("E-COST-PROLOCK a free user sees the lock, including the loss copy", async ({ page, harness, context, extId }) => {
@@ -98,7 +116,7 @@ test("E-COST-PROLOCK a free user sees the lock, including the loss copy", async 
   await page.goto(`${harness.origin}/product/edit/1732672081725400001`);
   const panel = page.locator("#tiktok-seller-tool-root");
   await panel.locator("#mm-hero-cost").fill("8");
-  await panel.getByRole("button", { name: "See my profit" }).click();
+  await clickLeaving(panel.getByRole("button", { name: "See my profit" }));
   await expect(panel.getByText("Max commission & ad limits")).toBeVisible();
   await panel.getByRole("spinbutton", { name: "Product cost" }).fill("80");
   await panel.getByRole("spinbutton", { name: "Product cost" }).blur();
@@ -111,9 +129,9 @@ test("E-COST-HELP help opens and closes", async ({ page, harness, context, extId
   await page.goto(`${harness.origin}/product/edit/1732672081725400001`);
   const panel = page.locator("#tiktok-seller-tool-root");
   await panel.locator("#mm-hero-cost").fill("8");
-  await panel.getByRole("button", { name: "See my profit" }).click();
-  await panel.getByRole("button", { name: "Your costs" }).click();
+  await clickLeaving(panel.getByRole("button", { name: "See my profit" }));
+  await clickLeaving(panel.getByRole("button", { name: "Your costs" }));
   await expect(panel.getByText("COGS is the supplier price")).toBeVisible();
-  await panel.getByRole("button", { name: "← Back" }).click();
+  await clickLeaving(panel.getByRole("button", { name: "← Back" }));
   await expect(panel.getByText("Your costs").first()).toBeVisible();
 });

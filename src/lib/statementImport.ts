@@ -32,6 +32,14 @@ const KEYWORDS: Record<StatementField, string[]> = {
   date: ["order date", "settlement date", "statement date"],
 };
 export const MAX_IMPORT_BYTES = 20 * 1024 * 1024;
+
+/** A file over the size or row limit. Its message is safe to show a seller; parser errors are not. */
+export class ImportLimitError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ImportLimitError";
+  }
+}
 export const MAX_IMPORT_ROWS = 50_000;
 
 function norm(value: string): string {
@@ -208,7 +216,7 @@ export async function readStatementTable(
   file: File,
 ): Promise<{ headers: string[]; rows: Array<Record<string, unknown>> }> {
   if (file.size > MAX_IMPORT_BYTES) {
-    throw new Error("Import files must be 20 MB or smaller.");
+    throw new ImportLimitError("Import files must be 20 MB or smaller.");
   }
   const name = file.name.toLowerCase();
   if (name.endsWith(".csv") || file.type.includes("csv")) {
@@ -220,7 +228,7 @@ export async function readStatementTable(
     });
     const headers = parsed.meta.fields ?? [];
     if (parsed.data.length > MAX_IMPORT_ROWS) {
-      throw new Error("Import files may contain at most 50,000 rows.");
+      throw new ImportLimitError("Import files may contain at most 50,000 rows.");
     }
     return { headers, rows: parsed.data };
   }
@@ -229,7 +237,7 @@ export async function readStatementTable(
   const sheet = book.Sheets[book.SheetNames[0]];
   const matrix = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, raw: false });
   if (matrix.length - 1 > MAX_IMPORT_ROWS) {
-    throw new Error("Import files may contain at most 50,000 rows.");
+    throw new ImportLimitError("Import files may contain at most 50,000 rows.");
   }
   const headerRow = (matrix[0] ?? []).map((cell) => String(cell ?? "").trim());
   const rows = matrix.slice(1).map((line) => {

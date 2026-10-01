@@ -4,8 +4,9 @@ import { ApiError } from "../lib/apiErrors";
 import { createCheckoutUrl, fetchMe, trackEvent, type MeResponse } from "../lib/apiClient";
 import { renewalDisclosure, yearlySavingsPct, type BillingInterval } from "../lib/billingDisclosure";
 import { flagEnabled } from "../content/activeConfig";
+import type { FlagKey } from "../lib/remoteConfig";
 import { openTab } from "../lib/openTab";
-import { isPaidTier, refreshTier, tierFromProfile } from "../lib/subscription";
+import { isPaidTier, readTier, tierFromProfile } from "../lib/subscription";
 import tiers from "../tiers.json";
 import { CheckIcon, XIcon } from "./icons";
 import { Alert, Button, cx, Spinner } from "./primitives";
@@ -13,17 +14,22 @@ import { Alert, Button, cx, Spinner } from "./primitives";
 const WAIT_POLL_MS = 4_000;
 const WAIT_MAX_MS = 5 * 60_000;
 
-/** Free vs Pro, in the words a seller uses. Every Pro line exists in the product. */
-export const COMPARE_ROWS: Array<{ label: string; free: string | boolean; pro: string | boolean }> = [
+/**
+ * Free vs Pro, in the words a seller uses. Every Pro line exists in the product;
+ * rows tied to a feature flag carry it, and a unit test fails if that flag is off.
+ */
+export const COMPARE_ROWS: Array<{ label: string; free: string | boolean; pro: string | boolean; flag?: FlagKey }> = [
   { label: "Profit per sale, green/red at a glance", free: true, pro: true },
+  { label: "Shop Performance Score alerts", free: true, pro: true },
   { label: "Products with your own costs", free: `${tiers.free.skuLimit}`, pro: "Unlimited" },
   { label: "Break-even price + loss warning", free: true, pro: true },
-  { label: "Max safe creator commission", free: false, pro: true },
-  { label: "Ad limits: max CPA + GMV Max ROAS", free: false, pro: true },
-  { label: "Fix advice for every losing product", free: false, pro: true },
-  { label: "Real fees from your statement", free: false, pro: true },
-  { label: "What-if price simulator", free: false, pro: true },
-  { label: "CSV export + price compare", free: false, pro: true },
+  { label: "The fix for each losing product", free: false, pro: true },
+  { label: "Profit per creator: keep, renegotiate or drop", free: "Totals", pro: true, flag: "creatorProfit" },
+  { label: "Max safe creator commission + ad limits", free: false, pro: true },
+  { label: "Weekly recap: new losers and fixes", free: "Totals", pro: true },
+  { label: "Real fees from your statement", free: false, pro: true, flag: "statementImport" },
+  { label: "What-if price simulator", free: false, pro: true, flag: "whatIf" },
+  { label: "CSV export", free: false, pro: true, flag: "csvExport" },
 ];
 
 function Cell({ value }: { value: string | boolean }) {
@@ -47,8 +53,8 @@ type PlanPickerProps = {
 export default function PlanPicker({
   onUnlocked,
   onNeedVerify,
-  headline = "Find every leak. Fix it fast.",
-  subline = "Pro shows the exact commission, ad, and price limits that keep each product profitable.",
+  headline = "See which products and creators lose you money, and the exact fix.",
+  subline = "Pro gives the commission, ad and price limit that turns each loser green, profit per creator, and a weekly recap of what changed.",
   placement = "plan",
   showCompare = true,
   me: meProp,
@@ -85,8 +91,10 @@ export default function PlanPicker({
     const timer = window.setInterval(() => {
       void (async () => {
         try {
-          const tier = await refreshTier();
-          if (isPaidTier(tier)) {
+          // Cached plan only. The worker re-checks the server every 30s after
+          // checkout opens (CHECKOUT_STARTED), so this loop costs no requests.
+          const tier = await readTier();
+          if (tier && isPaidTier(tier)) {
             window.clearInterval(timer);
             setWaiting(false);
             setUnlocked(true);
