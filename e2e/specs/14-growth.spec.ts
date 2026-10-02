@@ -249,12 +249,21 @@ test("E-BILL-CHECKOUT-POLL after checkout opens, Pro unlocks on the open panel w
   await page.evaluate(() => {
     (window as { __mmNoReload?: number }).__mmNoReload = 1;
   });
+  // Named wait: the open panel makes one forced plan check ~10s after it opens.
+  // Let that pass first, so only the checkout poll can unlock Pro below.
+  await page.waitForTimeout(12_000);
+  await expect(panel.getByRole("button", { name: "Upgrade" })).toBeVisible();
 
   // What createCheckoutUrl sends once Stripe Checkout opens. The seller pays in that tab and never comes back.
   expect((await extPage.evaluate(() => chrome.runtime.sendMessage({ type: "CHECKOUT_STARTED" }))).ok).toBe(true);
+  const started = Date.now();
   await makePro(harness.api, user.userId);
   // The poll runs every 30 seconds; the first tick must find the new plan.
   await expect(panel.getByText("Pro unlocked. Every lock is open.")).toBeVisible({ timeout: 45_000 });
+  const seconds = Math.round((Date.now() - started) / 1000);
+  test.info().annotations.push({ type: "checkout-poll", description: `unlocked after ${seconds}s` });
+  // Anything much faster than the first 30s tick means some other path unlocked it, and this test proved nothing.
+  expect(seconds, "Pro unlocked before the first poll tick; something else refreshed the plan").toBeGreaterThanOrEqual(20);
   expect(await page.evaluate(() => (window as { __mmNoReload?: number }).__mmNoReload)).toBe(1);
   // Once Pro is seen, the poll stops.
   await expect.poll(async () => extPage.evaluate(async () => Boolean(await chrome.alarms.get("checkoutPoll")))).toBe(false);

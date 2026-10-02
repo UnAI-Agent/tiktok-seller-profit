@@ -38,6 +38,8 @@ export async function wipeExtension(context: BrowserContext, extId: string, keep
     await new Promise<void>((resolve) => chrome.storage.local.clear(resolve));
   }, keepUrl);
   await page.close();
+  // Closing this helper tab can leave another tab in front. Give focus back to the page under test.
+  await keep?.bringToFront();
 }
 
 export async function seedToken(context: BrowserContext, extId: string, token: string, keep?: Page): Promise<void> {
@@ -46,6 +48,8 @@ export async function seedToken(context: BrowserContext, extId: string, token: s
   await page.goto(`chrome-extension://${extId}/oauth-finish.html`);
   await page.evaluate((value) => chrome.storage.local.set({ authToken: value }), token);
   await page.close();
+  // Closing this helper tab can leave another tab in front. Give focus back to the page under test.
+  await keep?.bringToFront();
 }
 
 export async function makePro(api: Api, userId: number): Promise<void> {

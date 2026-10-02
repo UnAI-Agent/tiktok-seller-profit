@@ -148,7 +148,10 @@ async function renderOverlay(settings: Settings) {
     return;
   }
 
-  const collapsed = loggedIn && settings.overlayCollapsed && !authPanelForced;
+  // Same rule as the panel itself (ProfitOverlay starts from settings.overlayCollapsed for
+  // everyone). Requiring loggedIn here put a signed-out seller's minimized tab where the
+  // full panel goes, and ran the full panel's save-button nudge on it.
+  const collapsed = settings.overlayCollapsed && !authPanelForced;
   await applyRemoteSelectors();
   if (gen !== renderGen) return;
   const product = parseProductPage();

@@ -21,6 +21,11 @@ test("E-VIS-SNAPSHOTS screenshot baselines of the main panels", async ({ page, h
   await expect(overlay(page).getByText("$36.00")).toBeVisible();
   await expect(overlay(page)).toHaveScreenshot("logged-out.png");
   await overlay(page).getByRole("button", { name: "Minimize" }).click();
+  await expect(overlay(page).getByRole("button", { name: "Open MarginMark" })).toBeVisible();
+  // The minimized tab sits on the right edge, centred. Wait for that placement, and keep this
+  // tab in front: a background tab gets no animation frames, so the screenshot never settles.
+  await expect.poll(() => overlay(page).evaluate((el) => (el as HTMLElement).style.transform)).toBe("translateY(-50%)");
+  await page.bringToFront();
   await expect(overlay(page)).toHaveScreenshot("collapsed.png");
   await overlay(page).getByRole("button", { name: "Open MarginMark" }).click();
   const user = await harness.api.registerApi(email());
