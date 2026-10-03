@@ -779,10 +779,7 @@
     {
       "id": "E-BILL-DONE-TAB",
       "name": "The billing done page refreshes the tier",
-      "surfaces": [
-        "lib:src/lib/openTab.ts",
-        "lib:src/lib/safeUrl.ts"
-      ],
+      "surfaces": [],
       "tests": [
         "@E-BILL-DONE-TAB"
       ]
@@ -903,10 +900,7 @@
       "name": "A support ticket is stored and emailed",
       "surfaces": [
         "component:src/popup/SupportCenter.tsx",
-        "msg:API_CALL",
-        "msg:OPEN_TAB",
-        "msg:OPEN_EXTERNAL_COMPARE",
-        "msg:GET_SPS"
+        "msg:API_CALL"
       ],
       "tests": [
         "@E-SUP-SUBMIT"
@@ -1085,9 +1079,7 @@
       "id": "E-FLAG-whatIf",
       "name": "What-if flag, off until remote config enables it",
       "surfaces": [
-        "component:src/content/components/WhatIfPanel.tsx",
-        "component:src/content/components/ExternalPriceCompare.tsx",
-        "lib:src/lib/externalPriceCompare.ts"
+        "component:src/content/components/WhatIfPanel.tsx"
       ],
       "tests": [
         "@E-FLAG-whatIf"
@@ -1203,7 +1195,8 @@
         "component:src/content/components/SpsBadge.tsx",
         "lib:src/content/spsCapture.ts",
         "lib:src/content/spsWatch.ts",
-        "msg:SAVE_SPS"
+        "msg:SAVE_SPS",
+        "msg:GET_SPS"
       ],
       "tests": [
         "@E-SPS-READ"
@@ -1217,6 +1210,21 @@
       ],
       "tests": [
         "@E-SPS-WARN"
+      ]
+    },
+    {
+      "id": "E-OPEN-LINKS",
+      "name": "Manage opens a tab, and Pro compare opens marketplace tabs",
+      "surfaces": [
+        "msg:OPEN_TAB",
+        "msg:OPEN_EXTERNAL_COMPARE",
+        "component:src/content/components/ExternalPriceCompare.tsx",
+        "lib:src/lib/externalPriceCompare.ts",
+        "lib:src/lib/openTab.ts",
+        "lib:src/lib/safeUrl.ts"
+      ],
+      "tests": [
+        "@E-OPEN-LINKS"
       ]
     },
     {

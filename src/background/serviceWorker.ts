@@ -2,7 +2,8 @@ import { API_BASE_URL, LLE_TEST_BANNER } from "../config";
 import { refreshRemoteConfig } from "../lib/remoteConfig";
 import { ApiError, errorTextFromJson } from "../lib/apiErrors";
 import { postAuth } from "../lib/authCall";
-import { exchangeOAuthTicket, getStoredToken, setStoredToken } from "../lib/apiClient";
+import { exchangeOAuthTicket, fetchMe, getStoredToken, setStoredToken } from "../lib/apiClient";
+import { clearSharedAuthMe, sharedAuthMeEmail } from "../lib/authMeShare";
 import { getCachedTier, refreshSubscriptionCache } from "../lib/subscription";
 import { CHECKOUT_POLL_ALARM, createTierRefresher } from "../lib/tierRefresh";
 import {
@@ -293,6 +294,8 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local") return;
   const keys = Object.keys(changes);
   if (keys.includes("authToken")) {
+    // A new sign-in must not reuse the previous account's /auth/me answer.
+    clearSharedAuthMe();
     // New account or signed out: the next plan check goes to the server at once.
     void tierRefresher.reset().then(() => {
       if (changes.authToken?.newValue) void refreshTierFromServer({ force: true });
@@ -323,6 +326,7 @@ const tierRefresher = createTierRefresher({
 
 /** Server plan check, capped at one a minute unless forced. See lib/tierRefresh.ts. */
 async function refreshTierFromServer(options: { force?: boolean } = {}): Promise<void> {
+  if (options.force) clearSharedAuthMe();
   await tierRefresher.refresh(options);
 }
 
@@ -600,7 +604,8 @@ chrome.runtime.onMessage.addListener(
             await refreshTierFromServer({ force: message.force === true });
             const token = await getStoredToken();
             const tier = await getCachedTier();
-            sendResponse({ ok: true, loggedIn: Boolean(token), tier });
+            const email = token ? sharedAuthMeEmail(token) ?? undefined : undefined;
+            sendResponse({ ok: true, loggedIn: Boolean(token), tier, email });
             return;
           }
           case "GET_LOCAL": {
@@ -619,6 +624,32 @@ chrome.runtime.onMessage.addListener(
             return;
           }
           case "API_CALL": {
+            if (message.method !== "GET") clearSharedAuthMe();
+            if (message.method === "GET" && message.path.startsWith("/auth/me")) {
+              const token = await getStoredToken();
+              if (!token) {
+                sendResponse({ ok: false, error: "Not authenticated", status: 403 });
+                return;
+              }
+              try {
+                const json = await fetchMe({
+                  notBefore: typeof message.notBefore === "number" ? message.notBefore : undefined,
+                });
+                if (!json) {
+                  sendResponse({ ok: false, error: "Not authenticated", status: 401 });
+                  return;
+                }
+                sendResponse({ ok: true, json, status: 200 });
+              } catch (err) {
+                const status = err instanceof ApiError ? err.status : 0;
+                sendResponse({
+                  ok: false,
+                  error: err instanceof ApiError ? err.message : "Connection lost. Check your internet.",
+                  status,
+                });
+              }
+              return;
+            }
             const token = await getStoredToken();
             const headers: Record<string, string> = { "Content-Type": "application/json" };
             if (token) headers.Authorization = `Bearer ${token}`;

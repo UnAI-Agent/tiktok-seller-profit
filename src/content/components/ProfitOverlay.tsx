@@ -161,6 +161,8 @@ export default function ProfitOverlay({
   const [connectionLost, setConnectionLost] = useState(false);
   const [skus, setSkus] = useState<SkuRecord[]>([]);
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const userEmailRef = useRef(userEmail);
+  userEmailRef.current = userEmail;
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
@@ -367,6 +369,9 @@ export default function ProfitOverlay({
         }
         if (!status.loggedIn) return;
         if (status.tier === "free" || status.tier === "pro" || status.tier === "diamond") setTier(status.tier);
+        // The load-time profile read can miss. The forced check already asked
+        // the server; keep that address if the field is still empty.
+        if (checkSession && !userEmailRef.current && status.email) setUserEmail(status.email);
       });
     }, 2000);
     const failTimer = setTimeout(() => {

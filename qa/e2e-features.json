@@ -478,6 +478,11 @@
     "optIn": false
   },
   {
+    "id": "E-OPEN-LINKS",
+    "name": "Manage opens a tab, and Pro compare opens marketplace tabs",
+    "optIn": false
+  },
+  {
     "id": "E-BULK-COST",
     "name": "Pasted costs save for matching products and respect the free limit",
     "optIn": false

@@ -96,22 +96,12 @@ export default function SupportCenter({ onClose, context, defaultEmail = "", def
       return;
     }
     let cancel = false;
-    // The account address can arrive a moment after Help opens. One miss left the field blank.
-    void (async () => {
-      for (let attempt = 0; attempt < 8 && !cancel; attempt += 1) {
-        try {
-          const me = await fetchMe();
-          if (cancel) return;
-          if (me?.email) {
-            setEmail((current) => current || me.email);
-            return;
-          }
-        } catch {
-          /* try again until the session is readable */
-        }
-        await new Promise((resolve) => setTimeout(resolve, 400));
-      }
-    })();
+    void fetchMe()
+      .then((me) => {
+        if (cancel || !me?.email) return;
+        setEmail((current) => current || me.email);
+      })
+      .catch(() => undefined);
     return () => {
       cancel = true;
     };

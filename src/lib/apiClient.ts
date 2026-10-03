@@ -1,4 +1,5 @@
 import { API_BASE_URL, SERVICE_SLUG } from "../config";
+import { clearSharedAuthMe, shareAuthMe } from "./authMeShare";
 import {
   ApiError,
   AUTH_EXPIRED_EVENT,
@@ -54,6 +55,7 @@ export async function setStoredToken(token: string | null): Promise<void> {
     } else {
       await chrome.storage.local.remove(TOKEN_KEY);
     }
+    clearSharedAuthMe();
   } catch {
     /* context invalidated after reload */
   }
@@ -102,6 +104,9 @@ function shouldRetry(err: unknown, attempt: number): boolean {
   return false;
 }
 
+/** When this document started. A profile fetched earlier belongs to the previous page. */
+const documentStartedAt = Date.now();
+
 /** Seller Center content scripts are the page origin, so the API rejects their preflight. */
 function proxyApiFromPage(): boolean {
   try {
@@ -116,12 +121,14 @@ async function apiFetch<T>(
   options: RequestInit = {},
 ): Promise<T> {
   const method = (options.method ?? "GET").toUpperCase();
+  if (!proxyApiFromPage() && method !== "GET") clearSharedAuthMe();
   if (proxyApiFromPage() && (method === "GET" || method === "POST")) {
     const res = await sendMessage({
       type: "API_CALL",
       method,
       path,
       body: typeof options.body === "string" ? options.body : undefined,
+      notBefore: documentStartedAt,
     });
     if (!res.ok) {
       const status = res.status ?? 0;
@@ -335,15 +342,26 @@ export async function requestPasswordReset(email: string): Promise<void> {
  * proxied call. Checking the token here first made every overlay look signed
  * out, and the overlay then showed Free for Pro accounts.
  */
-export async function fetchMe(): Promise<MeResponse | null> {
+export async function fetchMe(options?: { fresh?: boolean; notBefore?: number }): Promise<MeResponse | null> {
   if (!proxyApiFromPage()) {
     const token = await getStoredToken();
     if (!token) return null;
+    try {
+      return await shareAuthMe(
+        token,
+        () => apiFetch<MeResponse>(`/auth/me?service=${encodeURIComponent(SERVICE_SLUG)}`),
+        options?.fresh === true,
+        options?.notBefore ?? 0,
+      );
+    } catch (err) {
+      // No token → FastAPI answers 403 "Not authenticated"; a stale one → 401. Both mean signed out.
+      if (err instanceof ApiError && (err.status === 401 || err.status === 403)) return null;
+      throw err;
+    }
   }
   try {
     return await apiFetch<MeResponse>(`/auth/me?service=${encodeURIComponent(SERVICE_SLUG)}`);
   } catch (err) {
-    // No token → FastAPI answers 403 "Not authenticated"; a stale one → 401. Both mean signed out.
     if (err instanceof ApiError && (err.status === 401 || err.status === 403)) return null;
     throw err;
   }

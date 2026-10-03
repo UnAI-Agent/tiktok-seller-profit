@@ -99,16 +99,11 @@ export default function ProfilePanel({ onClose, onLogout, onAccountChanged, cost
   const [showUpgrade, setShowUpgrade] = useState(false);
 
   const load = useCallback(async () => {
-    // One miss used to leave the email box blank for the rest of the visit.
     let profile: MeResponse | null = null;
-    for (let attempt = 0; attempt < 5; attempt += 1) {
-      try {
-        profile = await fetchMe();
-      } catch {
-        profile = null;
-      }
-      if (profile?.email) break;
-      if (attempt < 4) await new Promise((resolve) => setTimeout(resolve, 300));
+    try {
+      profile = await fetchMe();
+    } catch {
+      profile = null;
     }
     setLoaded(true);
     if (!profile?.email) return;

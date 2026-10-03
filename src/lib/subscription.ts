@@ -26,7 +26,7 @@ export async function refreshSubscriptionCache(): Promise<SubscriptionTier> {
     if (token && tokenExpiresWithin(token, 7 * 86400)) {
       await refreshAccessToken();
     }
-    const tier = tierFromProfile(await fetchMe());
+    const tier = tierFromProfile(await fetchMe({ fresh: true }));
     if (!tier) return cached;
     const values: Record<string, unknown> = {
       subscription: {

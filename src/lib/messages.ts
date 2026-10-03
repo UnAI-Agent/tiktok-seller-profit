@@ -22,7 +22,7 @@ export type RuntimeMessage =
   | { type: "SCAN_OAUTH" }
   | { type: "LOGOUT" }
   | { type: "START_OAUTH"; url: string }
-  | { type: "API_CALL"; method: "GET" | "POST"; path: string; body?: string }
+  | { type: "API_CALL"; method: "GET" | "POST"; path: string; body?: string; notBefore?: number }
   | { type: "AUTH_LOGIN" | "AUTH_REGISTER"; email: string; password: string }
   | { type: "AUTH_FORGOT"; email: string }
   | { type: "AUTH_STATUS"; force?: boolean }
@@ -44,6 +44,7 @@ export type RuntimeResponse =
       json?: unknown;
       loggedIn?: boolean;
       tier?: string;
+      email?: string;
       local?: Record<string, unknown>;
     }
   | { ok: false; error: string; status?: number };
@@ -169,7 +170,8 @@ export function isRuntimeMessage(value: unknown): value is RuntimeMessage {
         (message.method === "GET" || message.method === "POST") &&
         boundedString(message.path, 200) &&
         allowedApiCall(message.method, message.path) &&
-        (message.body === undefined || boundedString(message.body, 8_000))
+        (message.body === undefined || boundedString(message.body, 8_000)) &&
+        (message.notBefore === undefined || (typeof message.notBefore === "number" && Number.isFinite(message.notBefore)))
       );
     case "AUTH_LOGIN":
     case "AUTH_REGISTER":

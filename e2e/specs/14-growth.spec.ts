@@ -239,6 +239,45 @@ test("E-SPS-WARN a score under 3.5 warns about affiliate access, under 2.5 about
   await expect(strip).toHaveAttribute("data-sps-level", "critical");
 });
 
+async function closeTabs(extPage: import("@playwright/test").Page, host: string): Promise<number> {
+  return extPage.evaluate(async (name) => {
+    const tabs = await chrome.tabs.query({});
+    const ids = tabs
+      .filter((tab) => `${tab.pendingUrl ?? ""} ${tab.url ?? ""}`.includes(name) && tab.id != null)
+      .map((tab) => tab.id as number);
+    if (ids.length) await chrome.tabs.remove(ids);
+    return ids.length;
+  }, host);
+}
+
+test("E-OPEN-LINKS Manage opens a tab, and Pro compare opens marketplace tabs", async ({ page, harness, context, extId, extPage }) => {
+  const user = await harness.api.registerApi(email());
+  await makePro(harness.api, user.userId);
+  await seedToken(context, extId, user.token);
+  await page.goto(`${harness.origin}/product/edit/real`);
+  const panel = page.locator("#tiktok-seller-tool-root");
+  await panel.locator("#mm-hero-cost").fill("8");
+  await clickLeaving(panel.getByRole("button", { name: "See my profit" }));
+  await panel.getByRole("button", { name: "Products" }).click();
+  await panel.getByRole("button", { name: "Manage" }).click();
+  await expect.poll(() => closeTabs(extPage, "seller-us.tiktok.com")).toBeGreaterThan(0);
+
+  await panel.getByRole("button", { name: "Row menu" }).click();
+  await panel.getByRole("menuitem", { name: /Compare prices/ }).click();
+  await panel.getByRole("button", { name: "Compare prices elsewhere (Pro)" }).click();
+  await expect(panel.getByText(/Opened 4 marketplaces/)).toBeVisible();
+  await extPage.evaluate(async (origin) => {
+    const tabs = await chrome.tabs.query({});
+    const ids = tabs
+      .filter((tab) => {
+        const url = `${tab.pendingUrl ?? ""} ${tab.url ?? ""}`;
+        return tab.id != null && url.trim() !== "" && !url.includes(origin) && !url.startsWith("chrome-extension://") && !url.startsWith("chrome://");
+      })
+      .map((tab) => tab.id as number);
+    if (ids.length) await chrome.tabs.remove(ids);
+  }, harness.origin);
+});
+
 test("E-BILL-CHECKOUT-POLL after checkout opens, Pro unlocks on the open panel with no return visit", async ({ page, harness, context, extId, extPage }) => {
   test.setTimeout(90_000);
   const user = await harness.api.registerApi(email());
